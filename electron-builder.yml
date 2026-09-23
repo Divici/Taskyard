@@ -1,0 +1,22 @@
+appId: com.taskyard.app
+productName: Taskyard
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**/*
+  - package.json
+asarUnpack:
+  # koffi's JS lives in node_modules/koffi; its native koffi.node ships in a sibling @koromix/* package.
+  - node_modules/koffi/**
+  - node_modules/@koromix/**
+# koffi ships prebuilt Node-API binaries; nothing needs rebuilding against Electron's headers.
+npmRebuild: false
+win:
+  target: nsis
+  requestedExecutionLevel: asInvoker
+nsis:
+  artifactName: ${productName}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
