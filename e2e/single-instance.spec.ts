@@ -32,9 +32,10 @@ test('a second launch exits after signalling the running instance', async () => 
 
     expect(exitCode).toBe(0)
     await expect.poll(() => profile.readLog()).toContain('app: second-instance received')
-    // Only the primary ever initialised the logger and opened a window.
+    // Only the primary ever initialised the logger and opened windows (one per display).
     expect(profile.readLog().match(/app: starting Taskyard/g)).toHaveLength(1)
-    expect(first.windows()).toHaveLength(1)
+    const displayCount = await first.evaluate(({ screen }) => screen.getAllDisplays().length)
+    await expect.poll(() => first.windows().length).toBe(displayCount)
   } finally {
     await first.close()
     profile.dispose()

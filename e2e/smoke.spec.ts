@@ -1,6 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import type { TaskyardApi } from '../src/preload/api'
 import { createProfile, launchTaskyard, type Profile } from './helpers/taskyard'
+import { desktopWindowInfo, win32Probe } from './helpers/win32'
 
 test.describe.serial('smoke', () => {
   let profile: Profile
@@ -19,15 +20,78 @@ test.describe.serial('smoke', () => {
     profile?.dispose()
   })
 
-  test('opens exactly one window, titled "Taskyard"', async () => {
+  test('opens one desktop window per display, each titled "Taskyard"', async () => {
     await expect(page).toHaveTitle('Taskyard')
     await expect(page.getByRole('heading', { level: 1, name: 'Taskyard' })).toBeVisible()
 
+    const displayCount = await app.evaluate(({ screen }) => screen.getAllDisplays().length)
+    await expect.poll(() => app.windows().length).toBe(displayCount)
     const titles = await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows().map((window) => window.getTitle())
     )
-    expect(titles).toEqual(['Taskyard'])
-    expect(app.windows()).toHaveLength(1)
+    expect(titles).toEqual(Array.from({ length: displayCount }, () => 'Taskyard'))
+  })
+
+  test('covers each display, 1 px short of its bottom edge, with its displayId in the URL', async () => {
+    const windows = await desktopWindowInfo(app)
+    const displays = await app.evaluate(({ screen }) =>
+      screen.getAllDisplays().map((display) => ({ id: display.id, bounds: display.bounds }))
+    )
+
+    expect(windows.map((window) => window.displayId).sort()).toEqual(
+      displays.map((display) => display.id).sort()
+    )
+    for (const window of windows) {
+      const display = displays.find((d) => d.id === window.displayId)!
+      expect(window.bounds).toEqual({ ...display.bounds, height: display.bounds.height - 1 })
+    }
+  })
+
+  test('shows every desktop window as a tool window seated above the shell desktop window', async () => {
+    const probe = await win32Probe()
+    const windows = await desktopWindowInfo(app)
+
+    // Shown on ready-to-show (the first paint), then seated.
+    await expect
+      .poll(() => windows.every((w) => probe.isVisible(w.hwnd) && probe.isSeated(w.hwnd)), {
+        timeout: 10_000
+      })
+      .toBe(true)
+    for (const window of windows) {
+      // WS_EX_TOOLWINDOW keeps it out of Alt-Tab and the taskbar; WS_EX_APPWINDOW would undo that.
+      expect(probe.exStyle(window.hwnd) & probe.WS_EX_TOOLWINDOW).toBe(probe.WS_EX_TOOLWINDOW)
+      expect(probe.exStyle(window.hwnd) & probe.WS_EX_APPWINDOW).toBe(0)
+      expect(probe.isVisible(window.hwnd)).toBe(true)
+      expect(probe.isIconic(window.hwnd)).toBe(false)
+    }
+  })
+
+  test('has a real window rect that stops 1 px short of the bottom edge (no invisible frame)', async () => {
+    const probe = await win32Probe()
+
+    // The shell decides "full screen" from the HWND rect: with Electron's default thick frame it
+    // is 8 px larger than the bounds on three sides and covers the whole monitor.
+    for (const window of await desktopWindowInfo(app)) {
+      expect(probe.windowRect(window.hwnd)).toEqual(window.screenBounds)
+    }
+  })
+
+  test('paints its renderer onto the screen, not just the black window background', async () => {
+    const probe = await win32Probe()
+    const windows = await desktopWindowInfo(app)
+    await expect
+      .poll(() => windows.every((w) => probe.isVisible(w.hwnd) && probe.isSeated(w.hwnd)), {
+        timeout: 10_000
+      })
+      .toBe(true)
+    const spots = windows
+      .map((window) => probe.uncoveredPoint(window.hwnd))
+      .filter((point) => point !== null)
+    test.skip(spots.length === 0, 'other windows cover every Taskyard pixel on this desktop')
+
+    // A window shown behind Chromium's back (raw ShowWindow) stays #000000, its backgroundColor.
+    const [spot] = spots
+    await expect.poll(() => probe.screenPixel(spot.x, spot.y)).not.toBe(0x000000)
   })
 
   test('renders in an OS-sandboxed renderer without Node globals', async () => {

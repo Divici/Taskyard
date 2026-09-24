@@ -70,21 +70,4 @@ describe('loadUser32', () => {
     expect(result).toBeNull()
     expect(log.error).toHaveBeenCalledExactlyOnceWith('koffi: user32 load failed (dev)', failure)
   })
-
-  it.runIf(process.platform === 'win32')(
-    'loads the real user32.dll through koffi on Windows',
-    async () => {
-      const log = fakeLog()
-
-      const lib = await loadUser32({
-        importKoffi: async () => (await import('koffi')).default,
-        isPackaged: false,
-        log
-      })
-
-      expect(lib).not.toBeNull()
-      expect(log.error).not.toHaveBeenCalled()
-      expect(log.info).toHaveBeenCalledExactlyOnceWith('koffi: user32 loaded (dev)')
-    }
-  )
 })

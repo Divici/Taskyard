@@ -22,7 +22,8 @@ describe('ENV', () => {
   it('names the override variables', () => {
     expect(ENV).toEqual({
       userData: 'TASKYARD_USER_DATA',
-      logLevel: 'TASKYARD_LOG_LEVEL'
+      logLevel: 'TASKYARD_LOG_LEVEL',
+      noWin32: 'TASKYARD_NO_WIN32'
     })
   })
 })

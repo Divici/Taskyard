@@ -2,6 +2,9 @@ import { resolve } from 'node:path'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
+/** Real-Win32 tests: opt-in only (npm run test:win32), never part of the headless suite. */
+const WIN32_TESTS = '**/*.win32.test.ts'
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -22,7 +25,9 @@ export default defineConfig({
             'src/preload/**/*.test.ts',
             'src/shared/**/*.test.ts',
             'scripts/**/*.test.ts'
-          ]
+          ],
+          exclude: [WIN32_TESTS],
+          setupFiles: ['src/main/test/setup-headless.ts']
         }
       },
       {
@@ -33,6 +38,17 @@ export default defineConfig({
           environment: 'jsdom',
           include: ['src/renderer/**/*.test.{ts,tsx}'],
           setupFiles: ['src/renderer/test/setupTests.ts']
+        }
+      },
+      {
+        extends: true,
+        test: {
+          name: 'win32',
+          environment: 'node',
+          include: [`src/main/${WIN32_TESTS}`],
+          // Real windows and the live z-order: one file at a time, in one process.
+          pool: 'forks',
+          poolOptions: { forks: { singleFork: true } }
         }
       }
     ]

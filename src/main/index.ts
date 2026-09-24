@@ -1,13 +1,18 @@
 import { join } from 'node:path'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, screen } from 'electron'
 import log from 'electron-log/main'
 import { APP_ID, APP_NAME } from '@shared/app-info'
 import { applyUserDataOverride, ENV, resolveLogLevel } from './app/env'
-import { configureLogger, defaultLogDir } from './app/logger'
+import { configureLogger, defaultLogDir, LOG_FILE_NAME } from './app/logger'
 import { acquireSingleInstanceLock } from './app/single-instance'
-import { loadUser32 } from './win32/load-user32'
-import { forwardRendererConsole } from './windows/renderer-console'
-import { placeholderWindowOptions } from './windows/window-options'
+import { startDesktop } from './app/start-desktop'
+import { createWin32Api } from './win32'
+import type { RendererSource } from './windows/desktop-window'
+import {
+  createDesktopWindowManager,
+  type DesktopWindowManager
+} from './windows/desktop-window-manager'
+import { registerDisplayIpc } from './windows/display-ipc'
 
 // Order matters: userData must be final before the single-instance lock (which lives in
 // userData) is requested and before the logger writes to userData/logs.
@@ -23,48 +28,66 @@ function onSecondInstance(): void {
 }
 
 function startPrimaryInstance(): void {
+  const logDir = defaultLogDir(app.getPath('userData'))
   configureLogger(log, {
-    logDir: defaultLogDir(app.getPath('userData')),
+    logDir,
     level: resolveLogLevel(process.env[ENV.logLevel])
   })
   log.errorHandler.startCatching({ showDialog: false })
   log.info(`app: starting ${APP_NAME} ${app.getVersion()} (${app.isPackaged ? 'packaged' : 'dev'})`)
 
-  void loadUser32({
-    importKoffi: async () => (await import('koffi')).default,
+  // Starts before `ready` so koffi loads (and the user32 probe logs) while Electron boots.
+  const win32 = createWin32Api({
+    env: process.env,
+    platform: process.platform,
     isPackaged: app.isPackaged,
-    log
+    log,
+    importKoffi: async () => (await import('koffi')).default
   })
 
-  void app.whenReady().then(() => {
-    app.setAppUserModelId(APP_ID)
-    createPlaceholderWindow()
-  })
+  let desktop: DesktopWindowManager | null = null
 
-  app.on('window-all-closed', () => app.quit())
+  app
+    .whenReady()
+    .then(async () => {
+      app.setAppUserModelId(APP_ID)
+      desktop = startDesktop(await win32, {
+        clearApplicationMenu: () => Menu.setApplicationMenu(null),
+        createManager: (api) =>
+          createDesktopWindowManager({
+            electron: { BrowserWindow, screen, powerMonitor },
+            api,
+            preloadPath: join(__dirname, '../preload/index.js'),
+            renderer: rendererSource(),
+            log,
+            requestQuit: () => app.quit()
+          }),
+        registerIpc: (manager) => registerDisplayIpc(ipcMain, manager),
+        showErrorBox: (title, content) => dialog.showErrorBox(title, content),
+        quit: () => app.quit(),
+        log,
+        logFile: join(logDir, LOG_FILE_NAME)
+      })
+    })
+    .catch((error: unknown) => {
+      log.error('app: startup failed', error)
+      app.quit()
+    })
+
+  // Desktop windows refuse outside closes (Alt+F4) until the app itself is quitting.
+  app.on('before-quit', () => {
+    log.info('app: before-quit')
+    desktop?.prepareToQuit()
+  })
+  app.on('will-quit', () => desktop?.dispose())
+  // A window destroyed from outside is recreated by the manager, so only quit when quitting.
+  app.on('window-all-closed', () => {
+    if (desktop === null || desktop.quitting) app.quit()
+  })
 }
 
-function createPlaceholderWindow(): BrowserWindow {
-  const window = new BrowserWindow(placeholderWindowOptions(join(__dirname, '../preload/index.js')))
-
-  window.once('ready-to-show', () => {
-    window.show()
-    log.info(`window: shown "${window.getTitle()}"`)
-  })
-  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-  forwardRendererConsole(window.webContents, log)
-  window.webContents.on('render-process-gone', (_event, details) => {
-    log.error('window: renderer process gone', details)
-  })
-  window.webContents.on('preload-error', (_event, preloadPath, error) => {
-    log.error(`window: preload failed (${preloadPath})`, error)
-  })
-
+function rendererSource(): RendererSource {
   const devServerUrl = process.env['ELECTRON_RENDERER_URL']
-  if (!app.isPackaged && devServerUrl) {
-    void window.loadURL(devServerUrl)
-  } else {
-    void window.loadFile(join(__dirname, '../renderer/index.html'))
-  }
-  return window
+  if (!app.isPackaged && devServerUrl) return { kind: 'url', url: devServerUrl }
+  return { kind: 'file', path: join(__dirname, '../renderer/index.html') }
 }

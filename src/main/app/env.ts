@@ -7,7 +7,9 @@ export const ENV = {
   /** Replaces app.getPath('userData') — isolates logs, data and the single-instance lock. */
   userData: 'TASKYARD_USER_DATA',
   /** One of electron-log's levels; anything else falls back to `info`. */
-  logLevel: 'TASKYARD_LOG_LEVEL'
+  logLevel: 'TASKYARD_LOG_LEVEL',
+  /** `1` = use the in-memory Win32 fake instead of koffi (no z-order seating). */
+  noWin32: 'TASKYARD_NO_WIN32'
 } as const
 
 type Env = Partial<Record<string, string | undefined>>
