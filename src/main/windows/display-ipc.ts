@@ -1,36 +1,9 @@
-/**
- * Main-process side of the display channels. The channel strings live here, in one object, so
- * they can be repointed at `src/shared/ipc.ts` (which owns every channel name) when merged.
- */
-export const DISPLAY_CHANNELS = {
-  /** invoke(id) → DisplayInfo | null */
-  get: 'display:get',
-  /** invoke() → DisplayInfo[] */
-  list: 'display:list',
-  /** main → renderer: the receiving window's own DisplayInfo, re-sent on any display change */
-  changed: 'display:changed',
-  /** main → renderer: PeekChangedPayload whenever Peek turns on or off */
-  peekChanged: 'peek:changed'
-} as const
+import { IPC, type DisplayInfo } from '@shared/ipc'
+import type { Rect } from '@shared/schema'
+import { handleTrusted, type IpcMainLike, type TrustedHandlerOptions } from '../ipc/sender-guard'
 
-export interface DisplayRect {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-/** One monitor as a renderer sees it (DIP coordinates, like Electron's `Display`). */
-export interface DisplayInfo {
-  id: number
-  bounds: DisplayRect
-  workArea: DisplayRect
-  scaleFactor: number
-}
-
-export interface PeekChangedPayload {
-  peeking: boolean
-}
+// Main-process side of the display channels. Every channel name and payload type comes from
+// src/shared/ipc.ts (`IPC.display`, and the `display:changed` / `peek:changed` events).
 
 /** Where display answers come from (the desktop window manager). */
 export interface DisplaySource {
@@ -38,13 +11,7 @@ export interface DisplaySource {
   listDisplays(): DisplayInfo[]
 }
 
-/** The slice of Electron's `ipcMain` used here (injectable for tests). */
-export interface IpcMainLike {
-  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void
-  removeHandler(channel: string): void
-}
-
-const rect = ({ x, y, width, height }: DisplayRect): DisplayRect => ({ x, y, width, height })
+const rect = ({ x, y, width, height }: Rect): Rect => ({ x, y, width, height })
 
 /** A structured-clone-safe copy of the fields renderers need from an Electron `Display`. */
 export function toDisplayInfo(display: DisplayInfo): DisplayInfo {
@@ -58,19 +25,26 @@ export function toDisplayInfo(display: DisplayInfo): DisplayInfo {
 
 function assertDisplayId(id: unknown): asserts id is number {
   if (typeof id !== 'number' || !Number.isSafeInteger(id) || id < 0) {
-    throw new TypeError(`${DISPLAY_CHANNELS.get} expects a non-negative integer display id`)
+    throw new TypeError(`${IPC.display.get} expects a non-negative integer display id`)
   }
 }
 
-/** Handles `display:get` and `display:list`. Returns a function that removes both handlers. */
-export function registerDisplayIpc(ipcMain: IpcMainLike, source: DisplaySource): () => void {
-  ipcMain.handle(DISPLAY_CHANNELS.get, (_event, id) => {
+/**
+ * Handles `display:get` and `display:list` for the Taskyard renderer only (the same sender check
+ * as every other request channel). Returns a function that removes both handlers.
+ */
+export function registerDisplayIpc(
+  ipcMain: IpcMainLike,
+  source: DisplaySource,
+  trust: TrustedHandlerOptions
+): () => void {
+  handleTrusted(ipcMain, IPC.display.get, trust, (_event, [id]) => {
     assertDisplayId(id)
     return source.getDisplay(id)
   })
-  ipcMain.handle(DISPLAY_CHANNELS.list, () => source.listDisplays())
+  handleTrusted(ipcMain, IPC.display.list, trust, () => source.listDisplays())
   return () => {
-    ipcMain.removeHandler(DISPLAY_CHANNELS.get)
-    ipcMain.removeHandler(DISPLAY_CHANNELS.list)
+    ipcMain.removeHandler(IPC.display.get)
+    ipcMain.removeHandler(IPC.display.list)
   }
 }

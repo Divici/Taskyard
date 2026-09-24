@@ -122,6 +122,29 @@ test.describe.serial('smoke', () => {
     expect(exposed).toEqual(actual)
   })
 
+  test('boots in the locked order: stores, journal replay, windows, scan, watch', async () => {
+    await expect.poll(() => profile.readLog()).toContain('boot: watch')
+    const lines = profile.readLog().split(/\r?\n/)
+    const at = (pattern: RegExp): number => {
+      const index = lines.findIndex((line) => pattern.test(line))
+      expect(index, `no log line matches ${pattern}`).toBeGreaterThanOrEqual(0)
+      return index
+    }
+
+    // Each boot line is logged when its step ends; the window count from inside createWindows.
+    const order = [
+      at(/boot: loadStores \d+ ms/),
+      at(/boot: replayJournal \d+ ms/),
+      at(/desktop: \d+ display window\(s\)/),
+      at(/boot: createWindows \d+ ms/),
+      at(/boot: scan \d+ ms/),
+      at(/boot: watch \d+ ms/)
+    ]
+
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    expect(new Set(order).size).toBe(order.length)
+  })
+
   test('logs the koffi user32 probe into the isolated profile', async () => {
     await expect.poll(() => profile.readLog()).toContain('koffi: user32 loaded (dev)')
     expect(profile.readLog()).not.toContain('koffi: user32 load failed')

@@ -183,6 +183,74 @@ describe('createDesktopWindow', () => {
     expect(webContents.pressKey({ key: 'F4', alt: true, type: 'keyUp' })).toBe(false)
   })
 
+  it('does not open DevTools on F12 unless DevTools are enabled (packaged builds)', () => {
+    createDesktopWindow(PRIMARY_DISPLAY, deps)
+    const { webContents } = only()
+
+    expect(webContents.pressKey({ key: 'F12' })).toBe(false)
+    expect(webContents.devTools).toEqual([])
+  })
+
+  it('toggles detached DevTools on F12 when enabled (dev builds), still blocking Alt+F4 and Ctrl+W', () => {
+    createDesktopWindow(PRIMARY_DISPLAY, { ...deps, devTools: true })
+    const { webContents } = only()
+
+    expect(webContents.pressKey({ key: 'F12' })).toBe(true)
+    expect(webContents.devTools).toEqual([{ open: 'detach' }])
+    expect(webContents.pressKey({ key: 'F12' })).toBe(true)
+    expect(webContents.devTools).toEqual([{ open: 'detach' }, 'close'])
+    // Only a plain F12 key-down; a key-up or a modified F12 stays the page's.
+    expect(webContents.pressKey({ key: 'F12', type: 'keyUp' })).toBe(false)
+    expect(webContents.pressKey({ key: 'F12', control: true })).toBe(false)
+    expect(webContents.devTools).toHaveLength(2)
+    expect(webContents.pressKey({ key: 'F4', alt: true })).toBe(true)
+    expect(webContents.pressKey({ key: 'w', control: true })).toBe(true)
+  })
+
+  it('leaves a page its beforeunload veto while nothing is closing the window', () => {
+    createDesktopWindow(PRIMARY_DISPLAY, deps)
+
+    expect(only().webContents.tryToBlockUnload()).toBe(false)
+  })
+
+  it('overrides a beforeunload veto (will-prevent-unload) once the app is quitting', () => {
+    createDesktopWindow(PRIMARY_DISPLAY, deps)
+    quitting = true
+
+    expect(only().webContents.tryToBlockUnload()).toBe(true)
+    expect(log.info).toHaveBeenCalledWith(
+      `desktop: ignored the page's beforeunload on display ${PRIMARY_DISPLAY.id} (closing)`
+    )
+  })
+
+  it('overrides a beforeunload veto when its owner closes it (display removed)', () => {
+    const desktop = createDesktopWindow(PRIMARY_DISPLAY, deps)
+    const window = only()
+    // The page's veto arrives while the close is under way.
+    window.on('close', () => {
+      expect(window.webContents.tryToBlockUnload()).toBe(true)
+    })
+
+    desktop.close()
+
+    expect(window.destroyed).toBe(true)
+  })
+
+  it('destroys the half-built window and rethrows when setting it up fails', () => {
+    const failing = class extends FakeBrowserWindow {
+      override removeMenu(): void {
+        throw new Error('menu gone')
+      }
+    }
+
+    expect(() => createDesktopWindow(PRIMARY_DISPLAY, { ...deps, BrowserWindow: failing })).toThrow(
+      'menu gone'
+    )
+    expect(only().destroyed).toBe(true)
+    expect(deps.onClosed).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('re-applies its bounds after creation, since Chromium clamps a new window to the work area', () => {
     createDesktopWindow(SECONDARY_DISPLAY, deps)
 

@@ -21,7 +21,8 @@ import {
   type DesktopWindowManager,
   type DesktopWindowManagerDeps
 } from './desktop-window-manager'
-import { registerDisplayIpc, type IpcMainLike } from './display-ipc'
+import { FakeIpcMain } from '../ipc/fake-ipc-main'
+import { registerDisplayIpc } from './display-ipc'
 
 const PRELOAD = 'C:\\app\\out\\preload\\index.js'
 const INDEX_HTML = 'C:\\app\\out\\renderer\\index.html'
@@ -102,20 +103,16 @@ describe('desktop windows per display', () => {
 
   it('answers display:get with bounds, workArea and scaleFactor', async () => {
     start()
-    const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>()
-    const ipcMain: IpcMainLike = {
-      handle: (channel, handler) => handlers.set(channel, handler),
-      removeHandler: (channel) => handlers.delete(channel)
-    }
-    registerDisplayIpc(ipcMain, manager)
+    const ipcMain = new FakeIpcMain()
+    registerDisplayIpc(ipcMain, manager, { isTrustedSender: () => true, log })
 
-    expect(handlers.get('display:get')!({}, SECONDARY_DISPLAY.id)).toEqual({
+    await expect(ipcMain.invoke('display:get', SECONDARY_DISPLAY.id)).resolves.toEqual({
       id: SECONDARY_DISPLAY.id,
       bounds: { x: 2560, y: 0, width: 1920, height: 1080 },
       workArea: { x: 2560, y: 0, width: 1920, height: 1032 },
       scaleFactor: 1.5
     })
-    expect(handlers.get('display:list')!({})).toHaveLength(2)
+    await expect(ipcMain.invoke('display:list')).resolves.toHaveLength(2)
   })
 
   it('calls seatAboveShell after showing each window without activation', () => {
@@ -861,5 +858,161 @@ describe('power and session', () => {
     api.clearCalls()
     vi.advanceTimersByTime(ZORDER_POLL_MS)
     expect(api.callsTo('seatAboveShell')).toEqual(windows().map((w) => [w.hwnd]))
+  })
+})
+
+describe('events to the desktop windows (the one broadcast)', () => {
+  it('emits an event to every desktop window and reports how many it reached', () => {
+    start()
+    const change = { store: 'settings', revision: 2, data: {} } as never
+
+    expect(manager.emit('storage:changed', change)).toBe(2)
+
+    for (const window of windows())
+      expect(window.webContents.sentOn('storage:changed')).toEqual([change])
+  })
+
+  it('reaches a window opened later and skips one that is gone', () => {
+    start()
+    electron.screen.addDisplay(fakeDisplay(77, { x: -1920, y: 0, width: 1920, height: 1080 }))
+    electron.screen.removeDisplay(SECONDARY_DISPLAY.id)
+
+    expect(manager.emit('peek:changed', { peeking: false })).toBe(2)
+    expect(windows()[1].webContents.sentOn('peek:changed')).toEqual([])
+    expect(windows()[2].webContents.sentOn('peek:changed')).toEqual([{ peeking: false }])
+  })
+
+  it('keeps going when one window cannot be reached, and logs it', () => {
+    start()
+    const [first, second] = windows()
+    first.webContents.send = () => {
+      throw new Error('render frame disposed')
+    }
+
+    expect(manager.emit('peek:changed', { peeking: true })).toBe(1)
+    expect(second.webContents.sentOn('peek:changed')).toEqual([{ peeking: true }])
+    expect(log.warn).toHaveBeenCalledWith(
+      `ipc: sending peek:changed to window ${first.webContents.id} failed`,
+      expect.objectContaining({ message: 'render frame disposed' })
+    )
+  })
+})
+
+describe('a quit that is cancelled', () => {
+  it('guards the windows again: an outside close is refused and becomes a quit request', () => {
+    start()
+    allReady()
+    manager.prepareToQuit()
+
+    manager.cancelQuit()
+
+    expect(manager.quitting).toBe(false)
+    windows()[0].close()
+    expect(windows()[0].destroyed).toBe(false)
+    vi.advanceTimersByTime(0)
+    expect(requestQuit).toHaveBeenCalledOnce()
+  })
+
+  it('reopens a display whose window already closed during the aborted quit', () => {
+    start()
+    allReady()
+    manager.prepareToQuit()
+    windows()[0].close()
+    expect(manager.windows()).toHaveLength(1)
+
+    manager.cancelQuit()
+
+    expect(live()).toHaveLength(2)
+    expect(
+      manager
+        .windows()
+        .map((w) => w.displayId)
+        .sort()
+    ).toEqual([PRIMARY_DISPLAY.id, SECONDARY_DISPLAY.id].sort())
+    expect(log.warn).toHaveBeenCalledWith(
+      'desktop: the quit was cancelled; the desktop windows stay and are guarded again'
+    )
+  })
+
+  it('lets the sentinel re-seat again (it stands down while quitting)', () => {
+    start()
+    allReady()
+    manager.prepareToQuit()
+    manager.cancelQuit()
+    api.showDesktop()
+    api.clearCalls()
+
+    api.emitForeground(api.getShellWindow())
+
+    expect(reseatCount()).toBe(1)
+  })
+
+  it('does nothing when no quit was under way', () => {
+    start()
+    allReady()
+    api.clearCalls()
+
+    manager.cancelQuit()
+
+    expect(manager.quitting).toBe(false)
+    expect(api.calls).toEqual([])
+    expect(live()).toHaveLength(2)
+  })
+})
+
+describe('a start that fails part-way', () => {
+  it('closes the windows it opened, removes every listener and timer, and rethrows', () => {
+    let built = 0
+    electron.BrowserWindow = class extends FakeBrowserWindow {
+      constructor(options: ConstructorParameters<typeof FakeBrowserWindow>[0]) {
+        if (++built === 2) throw new Error('GPU process unavailable')
+        super(options)
+      }
+    }
+
+    expect(() => start()).toThrow('GPU process unavailable')
+
+    expect(windows()).toHaveLength(1)
+    expect(windows()[0].destroyed).toBe(true)
+    expect(manager.windows()).toEqual([])
+    expect(vi.getTimerCount()).toBe(0)
+    for (const event of ['display-added', 'display-removed', 'display-metrics-changed']) {
+      expect(electron.screen.listenerCount(event)).toBe(0)
+    }
+    for (const event of ['resume', 'suspend', 'lock-screen', 'unlock-screen']) {
+      expect(electron.powerMonitor.listenerCount(event)).toBe(0)
+    }
+  })
+
+  it('removes the listeners it had already added when a later registration throws', () => {
+    const on = electron.powerMonitor.on.bind(electron.powerMonitor)
+    let registered = 0
+    electron.powerMonitor.on = ((event: string, listener: () => void) => {
+      if (++registered === 3) throw new Error('powerMonitor used before ready')
+      return on(event, listener)
+    }) as typeof electron.powerMonitor.on
+
+    expect(() => start()).toThrow('powerMonitor used before ready')
+
+    expect(windows().every((window) => window.destroyed)).toBe(true)
+    expect(manager.windows()).toEqual([])
+    expect(vi.getTimerCount()).toBe(0)
+    expect(electron.screen.listenerCount('display-added')).toBe(0)
+    for (const event of ['resume', 'suspend', 'lock-screen', 'unlock-screen']) {
+      expect(electron.powerMonitor.listenerCount(event)).toBe(0)
+    }
+    expect(api.callsTo('watchForeground')).toEqual([])
+  })
+})
+
+describe('DevTools', () => {
+  it('lets F12 open DevTools on every desktop window only when enabled', () => {
+    start({ devTools: true })
+    for (const window of windows()) expect(window.webContents.pressKey({ key: 'F12' })).toBe(true)
+
+    manager.dispose()
+    electron = createFakeElectron()
+    start()
+    for (const window of windows()) expect(window.webContents.pressKey({ key: 'F12' })).toBe(false)
   })
 })

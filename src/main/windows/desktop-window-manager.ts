@@ -1,3 +1,5 @@
+import type { DisplayInfo, PeekState } from '@shared/ipc'
+import { createEventEmitter, type IpcEventEmitter } from '../ipc/events'
 import type { Hwnd, Unsubscribe, Win32Api, ZOrderMode } from '../win32/api'
 import {
   createDesktopWindow,
@@ -6,13 +8,7 @@ import {
   type DesktopWindow,
   type RendererSource
 } from './desktop-window'
-import {
-  DISPLAY_CHANNELS,
-  toDisplayInfo,
-  type DisplayInfo,
-  type DisplaySource,
-  type PeekChangedPayload
-} from './display-ipc'
+import { toDisplayInfo, type DisplaySource } from './display-ipc'
 import {
   createReseatThrottle,
   RESEAT_THROTTLE,
@@ -80,15 +76,26 @@ export interface DesktopWindowManagerDeps {
   throttle?: ReseatThrottleOptions
   /** Quits the app gracefully (`app.quit()`), so before-quit and the store flush run. */
   requestQuit: () => void
+  /** F12 toggles DevTools on the desktop windows. Development builds only (`!app.isPackaged`). */
+  devTools?: boolean
 }
 
-export interface DesktopWindowManager extends DisplaySource {
-  /** Opens a window per display and starts the display listeners and the z-order sentinel. */
+export interface DesktopWindowManager extends DisplaySource, IpcEventEmitter {
+  /**
+   * Opens a window per display and starts the display listeners and the z-order sentinel. All or
+   * nothing: if any step throws, the windows it opened are closed, every listener and timer is
+   * removed, and the error is rethrown.
+   */
   start(): void
   /** Stops timers, the foreground hook and the listeners. Windows close with the app. */
   dispose(): void
   /** From here on windows may close (app quit) and none is recreated. Call on before-quit. */
   prepareToQuit(): void
+  /**
+   * The quit did not happen after all: windows refuse outside closes again, the sentinel resumes
+   * and a display whose window closed meanwhile gets a new one.
+   */
+  cancelQuit(): void
   readonly quitting: boolean
   /** The single source of truth for Peek: read by every guard, broadcast as `peek:changed`. */
   readonly peeking: boolean
@@ -103,6 +110,11 @@ export interface DesktopWindowManager extends DisplaySource {
   /** Shows and re-seats (or re-raises while peeking) every ready window. */
   reseatAll(): void
   windows(): readonly DesktopWindow[]
+  /**
+   * The one broadcast to the desktop windows (every main → renderer event goes through it):
+   * each live window gets the event; one that cannot be reached is logged and skipped.
+   */
+  emit: IpcEventEmitter['emit']
 }
 
 export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): DesktopWindowManager {
@@ -150,23 +162,23 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
     return display ? toDisplayInfo(display) : null
   }
 
+  // Every event to the renderers — display, peek, storage, and later phases' — goes through here.
+  const events = createEventEmitter(all, (desktop: DesktopWindow) => desktop.contents(), log)
+  const peekState = (): PeekState => ({ peeking })
+
   const sendState = (desktop: DesktopWindow): void => {
     const info = getDisplay(desktop.displayId)
-    if (info) desktop.send(DISPLAY_CHANNELS.changed, info)
-    const payload: PeekChangedPayload = { peeking }
-    desktop.send(DISPLAY_CHANNELS.peekChanged, payload)
+    if (info) events.emitTo(desktop, 'display:changed', info)
+    events.emitTo(desktop, 'peek:changed', peekState())
   }
 
+  /** Each window gets its own display's info. */
   const broadcastDisplays = (): void => {
-    for (const desktop of all()) {
-      const info = getDisplay(desktop.displayId)
-      if (info) desktop.send(DISPLAY_CHANNELS.changed, info)
-    }
+    events.emitEach('display:changed', (desktop) => getDisplay(desktop.displayId))
   }
 
   const broadcastPeek = (): void => {
-    const payload: PeekChangedPayload = { peeking }
-    for (const desktop of all()) desktop.send(DISPLAY_CHANNELS.peekChanged, payload)
+    events.emit('peek:changed', peekState())
   }
 
   const onWindowClosed = (closed: DesktopWindow, { expected }: { expected: boolean }): void => {
@@ -243,7 +255,8 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
       canClose: () => quitting,
       onClosed: onWindowClosed,
       onCloseRequest,
-      onRendererLoaded: sendState
+      onRendererLoaded: sendState,
+      devTools: deps.devTools
     })
     byDisplay.set(display.id, desktop)
   }
@@ -439,42 +452,73 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
     }
   }
 
+  /** Stops timers, the foreground hook and the listeners (removing one never added is a no-op). */
+  const stopWatching = (): void => {
+    stopPoll()
+    if (settleTimer !== null) clearTimeout(settleTimer)
+    settleTimer = null
+    clearIdle()
+    for (const timer of pendingTimers) clearTimeout(timer)
+    pendingTimers.clear()
+    for (const timer of cooldowns.values()) clearTimeout(timer)
+    cooldowns.clear()
+    unwatchForeground?.()
+    unwatchForeground = null
+    watchDisplays(false)
+    watchPower(false)
+  }
+
   return {
     start() {
       if (started) return
       started = true
-      seatedShell = api.getShellWindow()
-      knownShell = seatedShell
-      for (const display of electron.screen.getAllDisplays()) openWindow(display)
-      watchDisplays(true)
-      watchPower(true)
       try {
-        unwatchForeground = api.watchForeground(onForeground)
+        seatedShell = api.getShellWindow()
+        knownShell = seatedShell
+        for (const display of electron.screen.getAllDisplays()) openWindow(display)
+        watchDisplays(true)
+        watchPower(true)
+        try {
+          unwatchForeground = api.watchForeground(onForeground)
+        } catch (error) {
+          log.warn('zorder: foreground hook unavailable, relying on the poll', error)
+        }
+        startPoll()
       } catch (error) {
-        log.warn('zorder: foreground hook unavailable, relying on the poll', error)
+        // All or nothing: a half-started desktop (some windows, no sentinel) must not linger.
+        started = false
+        stopWatching()
+        const opened = all()
+        byDisplay.clear()
+        for (const desktop of opened) {
+          try {
+            desktop.close()
+          } catch (closeError) {
+            log.error(
+              `desktop: closing the window on display ${desktop.displayId} failed`,
+              closeError
+            )
+          }
+        }
+        throw error
       }
-      startPoll()
     },
 
     dispose() {
       if (!started) return
       started = false
-      stopPoll()
-      if (settleTimer !== null) clearTimeout(settleTimer)
-      settleTimer = null
-      clearIdle()
-      for (const timer of pendingTimers) clearTimeout(timer)
-      pendingTimers.clear()
-      for (const timer of cooldowns.values()) clearTimeout(timer)
-      cooldowns.clear()
-      unwatchForeground?.()
-      unwatchForeground = null
-      watchDisplays(false)
-      watchPower(false)
+      stopWatching()
     },
 
     prepareToQuit() {
       quitting = true
+    },
+    cancelQuit() {
+      if (!quitting) return
+      quitting = false
+      if (!started) return
+      log.warn('desktop: the quit was cancelled; the desktop windows stay and are guarded again')
+      syncDisplays()
     },
     get quitting() {
       return quitting
@@ -496,6 +540,7 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
     },
     reseatAll,
     windows: all,
+    emit: events.emit,
     getDisplay,
     listDisplays: () => electron.screen.getAllDisplays().map(toDisplayInfo)
   }

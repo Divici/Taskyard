@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  DISPLAY_CHANNELS,
-  registerDisplayIpc,
-  toDisplayInfo,
-  type DisplayInfo,
-  type IpcMainLike
-} from './display-ipc'
+import { IPC, type DisplayInfo } from '@shared/ipc'
+import { FakeIpcMain, TRUSTED_RENDERER_URL } from '../ipc/fake-ipc-main'
+import { registerDisplayIpc, toDisplayInfo } from './display-ipc'
 
 const PRIMARY: DisplayInfo = {
   id: 2450156880,
@@ -14,36 +10,20 @@ const PRIMARY: DisplayInfo = {
   scaleFactor: 1.25
 }
 
-type Handler = (event: unknown, ...args: unknown[]) => unknown
-
-function fakeIpcMain(): IpcMainLike & { invoke(channel: string, ...args: unknown[]): unknown } {
-  const handlers = new Map<string, Handler>()
-  return {
-    handle: vi.fn((channel: string, handler: Handler) => {
-      if (handlers.has(channel)) throw new Error(`second handler for ${channel}`)
-      handlers.set(channel, handler)
-    }),
-    removeHandler: vi.fn((channel: string) => {
-      handlers.delete(channel)
-    }),
-    invoke(channel, ...args) {
-      const handler = handlers.get(channel)
-      if (!handler) throw new Error(`no handler for ${channel}`)
-      return handler({}, ...args)
-    }
-  }
+const source = {
+  getDisplay: (id: number) => (id === PRIMARY.id ? PRIMARY : null),
+  listDisplays: () => [PRIMARY]
 }
 
-describe('DISPLAY_CHANNELS', () => {
-  it('names the display and peek channels', () => {
-    expect(DISPLAY_CHANNELS).toEqual({
-      get: 'display:get',
-      list: 'display:list',
-      changed: 'display:changed',
-      peekChanged: 'peek:changed'
-    })
+function setup(): { ipc: FakeIpcMain; warn: ReturnType<typeof vi.fn>; unregister: () => void } {
+  const ipc = new FakeIpcMain()
+  const warn = vi.fn()
+  const unregister = registerDisplayIpc(ipc, source, {
+    isTrustedSender: (event) => event.senderFrame?.url === TRUSTED_RENDERER_URL,
+    log: { warn }
   })
-})
+  return { ipc, warn, unregister }
+}
 
 describe('toDisplayInfo', () => {
   it('copies id, bounds, workArea and scaleFactor into plain objects', () => {
@@ -57,43 +37,54 @@ describe('toDisplayInfo', () => {
 })
 
 describe('registerDisplayIpc', () => {
-  const source = {
-    getDisplay: (id: number) => (id === PRIMARY.id ? PRIMARY : null),
-    listDisplays: () => [PRIMARY]
-  }
+  it('registers exactly the shared display channels from src/shared/ipc.ts', () => {
+    const { ipc } = setup()
 
-  it('answers display:get with bounds, workArea and scaleFactor', () => {
-    const ipcMain = fakeIpcMain()
-    registerDisplayIpc(ipcMain, source)
-
-    expect(ipcMain.invoke('display:get', PRIMARY.id)).toEqual(PRIMARY)
-    expect(ipcMain.invoke('display:get', 12345)).toBeNull()
+    expect([...ipc.handlers.keys()]).toEqual([IPC.display.get, IPC.display.list])
   })
 
-  it('answers display:list with every display', () => {
-    const ipcMain = fakeIpcMain()
-    registerDisplayIpc(ipcMain, source)
+  it('answers display:get with bounds, workArea and scaleFactor, and null for an unknown id', async () => {
+    const { ipc } = setup()
 
-    expect(ipcMain.invoke('display:list')).toEqual([PRIMARY])
+    await expect(ipc.invoke(IPC.display.get, PRIMARY.id)).resolves.toEqual(PRIMARY)
+    await expect(ipc.invoke(IPC.display.get, 12345)).resolves.toBeNull()
   })
 
-  it.each(['1', 1.5, -1, Number.NaN, undefined, null])('rejects display id %j', (id) => {
-    const ipcMain = fakeIpcMain()
-    registerDisplayIpc(ipcMain, source)
+  it('answers display:list with every display', async () => {
+    const { ipc } = setup()
 
-    expect(() => ipcMain.invoke('display:get', id)).toThrow(
+    await expect(ipc.invoke(IPC.display.list)).resolves.toEqual([PRIMARY])
+  })
+
+  it.each(['1', 1.5, -1, Number.NaN, undefined, null])('rejects display id %j', async (id) => {
+    const { ipc } = setup()
+
+    await expect(ipc.invoke(IPC.display.get, id)).rejects.toThrow(
       'display:get expects a non-negative integer display id'
     )
   })
 
-  it('returns an unregister function that removes both handlers', () => {
-    const ipcMain = fakeIpcMain()
+  it('refuses both channels to any sender that is not the Taskyard renderer', async () => {
+    const { ipc, warn } = setup()
+    const stranger = { sender: { id: 9 }, senderFrame: { url: 'https://evil.example/' } }
 
-    const unregister = registerDisplayIpc(ipcMain, source)
+    await expect(ipc.invokeFrom(stranger, IPC.display.get, PRIMARY.id)).rejects.toThrow(
+      'untrusted sender for display:get'
+    )
+    await expect(ipc.invokeFrom(stranger, IPC.display.list)).rejects.toThrow(
+      'untrusted sender for display:list'
+    )
+    expect(warn).toHaveBeenCalledWith('ipc: rejected display:get from https://evil.example/')
+  })
+
+  it('returns an unregister function that removes both handlers', async () => {
+    const { ipc, unregister } = setup()
+
     unregister()
 
-    expect(ipcMain.removeHandler).toHaveBeenCalledWith('display:get')
-    expect(ipcMain.removeHandler).toHaveBeenCalledWith('display:list')
-    expect(() => ipcMain.invoke('display:list')).toThrow('no handler for display:list')
+    expect(ipc.handlers.size).toBe(0)
+    await expect(ipc.invoke(IPC.display.list)).rejects.toThrow(
+      "No handler registered for 'display:list'"
+    )
   })
 })

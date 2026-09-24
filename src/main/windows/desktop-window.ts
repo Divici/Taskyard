@@ -1,5 +1,6 @@
 import type { BrowserWindowConstructorOptions, Rectangle } from 'electron'
 import { APP_NAME } from '@shared/app-info'
+import type { WebContentsLike } from '../ipc/events'
 import type { Hwnd, Win32Api, ZOrderMode } from '../win32/api'
 import { forwardRendererConsole, type ConsoleMessageSource } from './renderer-console'
 import { secureWebPreferences } from './window-options'
@@ -49,9 +50,27 @@ export function isBlockedDesktopShortcut(input: KeyInputLike): boolean {
   return (input.alt && key === 'f4') || (input.control && key === 'w')
 }
 
-export interface DesktopWebContents {
-  send(channel: string, payload: unknown): void
+/**
+ * F12 toggles DevTools — only when the window was opened with `devTools` (development builds;
+ * the packaged app has no DevTools). A plain key-down only; a modified F12 stays the page's.
+ */
+export function isDevToolsShortcut(input: KeyInputLike): boolean {
+  return (
+    input.type === 'keyDown' &&
+    input.key === 'F12' &&
+    !input.alt &&
+    !input.control &&
+    !input.shift &&
+    !input.meta
+  )
+}
+
+export interface DesktopWebContents extends WebContentsLike {
   reload(): void
+  isDevToolsOpened(): boolean
+  /** Detached: docked DevTools would sit inside the desktop layer, below every app. */
+  openDevTools(options: { mode: 'detach' }): void
+  closeDevTools(): void
   setWindowOpenHandler(handler: () => { action: 'deny' }): void
   on(...args: Parameters<ConsoleMessageSource['on']>): unknown
   on(event: 'did-finish-load', listener: () => void): unknown
@@ -59,6 +78,8 @@ export interface DesktopWebContents {
     event: 'before-input-event',
     listener: (event: { preventDefault(): void }, input: KeyInputLike) => void
   ): unknown
+  /** A page's beforeunload tries to veto an unload; preventDefault() ignores the veto. */
+  on(event: 'will-prevent-unload', listener: (event: { preventDefault(): void }) => void): unknown
   on(event: 'render-process-gone', listener: (event: unknown, details: unknown) => void): unknown
   on(
     event: 'preload-error',
@@ -82,6 +103,8 @@ export interface DesktopBrowserWindow {
   isMinimized(): boolean
   isDestroyed(): boolean
   close(): void
+  /** Gone at once, without a cancellable `close` (only for a window that failed to set up). */
+  destroy(): void
   on(
     event: 'focus' | 'show' | 'restore' | 'minimize' | 'closed' | 'session-end',
     listener: () => void
@@ -122,6 +145,8 @@ export interface DesktopWindowDeps {
   readyTimeoutMs?: number
   /** A renderer finished (re)loading and needs its display and peek state again. */
   onRendererLoaded?: (window: DesktopWindow) => void
+  /** F12 toggles (detached) DevTools. Development builds only: `!app.isPackaged`. */
+  devTools?: boolean
 }
 
 export interface DesktopWindow {
@@ -135,7 +160,8 @@ export interface DesktopWindow {
   /** Shows it again if needed, then seats it above the shell (or keeps it raised while peeking). */
   reseat(): void
   setDisplay(display: DesktopDisplay): void
-  send(channel: string, payload: unknown): void
+  /** Its renderer, for sending events; null once the window is destroyed. */
+  contents(): WebContentsLike | null
   /** Closes it on purpose (display removed); an outside close is refused. */
   close(): void
 }
@@ -199,8 +225,26 @@ export function createDesktopWindow(
   display: DesktopDisplay,
   deps: DesktopWindowDeps
 ): DesktopWindow {
-  const { api, log } = deps
   const window = new deps.BrowserWindow(desktopWindowOptions(display, deps.preloadPath))
+  const setup = { abandoned: false }
+  try {
+    return setUpDesktopWindow(window, display, deps, setup)
+  } catch (error) {
+    // Half set up: never leave an unowned window (or its timers) behind. Its owner never saw
+    // it, so it is not reported as closed either.
+    setup.abandoned = true
+    if (!window.isDestroyed()) window.destroy()
+    throw error
+  }
+}
+
+function setUpDesktopWindow(
+  window: DesktopBrowserWindow,
+  display: DesktopDisplay,
+  deps: DesktopWindowDeps,
+  setup: { abandoned: boolean }
+): DesktopWindow {
+  const { api, log } = deps
   // Chromium clamps a new window to the display's work area (measured: 1032 instead of 1079 on
   // a 1080 px display with a 48 px taskbar); bounds set after creation are kept.
   window.setBounds(desktopWindowBounds(display))
@@ -214,6 +258,8 @@ export function createDesktopWindow(
   /** The renderer kept crashing: the window is hidden until a retry loads. */
   let gaveUp = false
   let retryTimer: ReturnType<typeof setTimeout> | null = null
+  /** Armed last, once nothing else can fail: a failed setup leaves no timer behind. */
+  let readyTimer: ReturnType<typeof setTimeout> | null = null
 
   const place = (): void => {
     if (deps.mode() === 'peek') api.setTopmost(hwnd, true)
@@ -241,9 +287,7 @@ export function createDesktopWindow(
     setDisplay(next) {
       window.setBounds(desktopWindowBounds(next))
     },
-    send(channel, payload) {
-      if (!window.isDestroyed()) window.webContents.send(channel, payload)
-    },
+    contents: () => (window.isDestroyed() ? null : window.webContents),
     close() {
       closeAllowed = true
       if (!window.isDestroyed()) window.close()
@@ -264,17 +308,8 @@ export function createDesktopWindow(
     log.info(`desktop: window shown on display ${display.id} (hwnd 0x${hwnd.toString(16)})`)
   }
 
-  const readyTimeoutMs = deps.readyTimeoutMs ?? READY_TO_SHOW_TIMEOUT_MS
-  // A renderer that never paints must not leave the display without its desktop layer.
-  const readyTimer = setTimeout(() => {
-    if (ready) return
-    log.warn(
-      `desktop: no ready-to-show on display ${display.id} after ${readyTimeoutMs} ms; showing anyway`
-    )
-    show()
-  }, readyTimeoutMs)
   window.once('ready-to-show', () => {
-    clearTimeout(readyTimer)
+    if (readyTimer !== null) clearTimeout(readyTimer)
     show()
   })
   for (const event of ['focus', 'show', 'restore', 'minimize'] as const) {
@@ -295,17 +330,31 @@ export function createDesktopWindow(
     dropGuard()
   })
   window.on('closed', () => {
-    clearTimeout(readyTimer)
+    if (readyTimer !== null) clearTimeout(readyTimer)
     if (retryTimer !== null) clearTimeout(retryTimer)
     ready = false
     dropGuard()
+    if (setup.abandoned) return
     deps.onClosed(desktop, { expected: closeAllowed || deps.canClose() })
   })
 
   const { webContents } = window
   webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   webContents.on('before-input-event', (event, input) => {
-    if (isBlockedDesktopShortcut(input)) event.preventDefault()
+    if (isBlockedDesktopShortcut(input)) {
+      event.preventDefault()
+    } else if (deps.devTools === true && isDevToolsShortcut(input)) {
+      event.preventDefault()
+      if (webContents.isDevToolsOpened()) webContents.closeDevTools()
+      else webContents.openDevTools({ mode: 'detach' })
+    }
+  })
+  // A close that is allowed (app quit, owner, session end) must not be vetoed by the page's
+  // beforeunload: a vetoed close would cancel Electron's quit and leave a half-closed desktop.
+  webContents.on('will-prevent-unload', (event) => {
+    if (!closeAllowed && !deps.canClose()) return
+    event.preventDefault()
+    log.info(`desktop: ignored the page's beforeunload on display ${display.id} (closing)`)
   })
   forwardRendererConsole(webContents, log)
   const scheduleRetry = (): void => {
@@ -342,7 +391,7 @@ export function createDesktopWindow(
       // A dead black rectangle is worse than no desktop layer: show Explorer's desktop.
       gaveUp = true
       ready = false
-      clearTimeout(readyTimer)
+      if (readyTimer !== null) clearTimeout(readyTimer)
       window.hide()
       log.error(
         `desktop: renderer on display ${display.id} keeps crashing (${CRASH_RELOAD_LIMIT} reloads in ${CRASH_RELOAD_WINDOW_MS / 1000} s); hiding the window, retrying in ${CRASH_RETRY_COOLDOWN_MS / 60_000} min`
@@ -365,6 +414,16 @@ export function createDesktopWindow(
   loading.catch((error: unknown) => {
     log.error(`desktop: renderer failed to load on display ${display.id}`, error)
   })
+
+  const readyTimeoutMs = deps.readyTimeoutMs ?? READY_TO_SHOW_TIMEOUT_MS
+  // A renderer that never paints must not leave the display without its desktop layer.
+  readyTimer = setTimeout(() => {
+    if (ready) return
+    log.warn(
+      `desktop: no ready-to-show on display ${display.id} after ${readyTimeoutMs} ms; showing anyway`
+    )
+    show()
+  }, readyTimeoutMs)
 
   return desktop
 }

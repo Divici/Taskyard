@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { BrowserWindowConstructorOptions, Rectangle } from 'electron'
 import type { FakeWin32Api } from '../win32/fake-api'
-import type { DisplayInfo } from '../windows/display-ipc'
+import type { DisplayInfo } from '@shared/ipc'
 
 /** Test doubles for the slices of Electron's BrowserWindow, screen and powerMonitor we use. */
 
@@ -14,13 +14,52 @@ export interface KeyInput {
   meta: boolean
 }
 
+let nextWebContentsId = 1
+
 export class FakeWebContents extends EventEmitter {
+  readonly id = nextWebContentsId++
   readonly sent: { channel: string; payload: unknown }[] = []
+  /** Every DevTools open (with its options) and close, in order. */
+  readonly devTools: ({ open: string } | 'close')[] = []
   windowOpenHandler: (() => unknown) | null = null
   reloads = 0
+  destroyed = false
+  private devToolsOpen = false
 
   reload(): void {
     this.reloads++
+  }
+
+  isDestroyed(): boolean {
+    return this.destroyed
+  }
+
+  isDevToolsOpened(): boolean {
+    return this.devToolsOpen
+  }
+
+  openDevTools(options: { mode: string }): void {
+    this.devToolsOpen = true
+    this.devTools.push({ open: options.mode })
+  }
+
+  closeDevTools(): void {
+    this.devToolsOpen = false
+    this.devTools.push('close')
+  }
+
+  /**
+   * The page's beforeunload tries to veto an unload (Electron's `will-prevent-unload`). Returns
+   * true when a listener called preventDefault(), i.e. the veto is ignored and the unload goes on.
+   */
+  tryToBlockUnload(): boolean {
+    let ignored = false
+    this.emit('will-prevent-unload', {
+      preventDefault: () => {
+        ignored = true
+      }
+    })
+    return ignored
   }
 
   /** Emits `before-input-event` for a key press; true when a listener prevented it. */
@@ -146,6 +185,7 @@ export class FakeBrowserWindow extends EventEmitter {
     })
     if (prevented) return
     this.destroyed = true
+    this.webContents.destroyed = true
     this.emit('closed')
   }
 
@@ -153,6 +193,7 @@ export class FakeBrowserWindow extends EventEmitter {
   destroy(): void {
     if (this.destroyed) return
     this.destroyed = true
+    this.webContents.destroyed = true
     this.emit('closed')
   }
 

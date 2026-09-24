@@ -1,14 +1,14 @@
 // Runs sandboxed (sandbox: true): only `electron` and a few polyfilled builtins can be required,
-// so electron-vite bundles this file into a single self-contained CommonJS script.
-import { contextBridge } from 'electron'
-import type { TaskyardApi } from './api'
+// so electron-vite bundles this file (and @shared/ipc, which is zod-free) into a single
+// self-contained CommonJS script. No `clipboard` here: "Copy path" uses navigator.clipboard.
+import { contextBridge, ipcRenderer } from 'electron'
+import { createTaskyardApi } from './bridge'
 
-const api: TaskyardApi = {
-  versions: {
+contextBridge.exposeInMainWorld(
+  'taskyard',
+  createTaskyardApi(ipcRenderer, {
     electron: process.versions.electron,
     chrome: process.versions.chrome,
     node: process.versions.node
-  }
-}
-
-contextBridge.exposeInMainWorld('taskyard', api)
+  })
+)
