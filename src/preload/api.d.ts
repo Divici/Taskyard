@@ -8,6 +8,8 @@ import type {
   UndoMoveResult,
   IpcEventName,
   IpcEvents,
+  PeekState,
+  ShortcutStatus,
   SaveRequest,
   SaveResult,
   StorageStatus,
@@ -49,6 +51,27 @@ export interface TaskyardApi {
     /** This window's display (id from its URL): bounds, work area, scale factor; null if unknown. */
     get(id: number): Promise<DisplayInfo | null>
     list(): Promise<DisplayInfo[]>
+  }
+
+  /** Phase 9: Peek lives in main (window manager + src/main/app/shortcuts.ts). */
+  peek: {
+    /** Whether Peek is on now; then follow `peek:changed`. */
+    get(): Promise<PeekState>
+    /** A text input in this window gained or lost focus: the idle unpeek waits while one has. */
+    inputFocus(focused: boolean): Promise<void>
+    /** Pointer or keyboard activity during a Peek: restarts the 8 s idle unpeek. */
+    activity(): Promise<void>
+    /** A click outside every group and panel during a Peek: ends it. */
+    clickOutside(): Promise<void>
+    /** The Peek shortcut's registration; then follow `peek:shortcut`. */
+    shortcutStatus(): Promise<ShortcutStatus>
+  }
+
+  /** Phase 9: quick-hide, shared by every display (never persisted). */
+  quickHide: {
+    get(): Promise<boolean>
+    /** Hides or shows the icons and groups on every display (`quickHide:changed` to all). */
+    set(hidden: boolean): Promise<void>
   }
 
   /** The desktop folders' items and the file operations on them (main: src/main/desktop). */

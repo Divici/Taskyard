@@ -11,6 +11,8 @@ export type ItemKeyAction =
   | { type: 'trash' }
   | { type: 'clear' }
   | { type: 'selectAll' }
+  | { type: 'copyPath' }
+  | { type: 'menu' }
 
 export type KeyInput = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>
 
@@ -23,12 +25,21 @@ const ARROWS: Readonly<Record<string, Direction>> = {
 
 /**
  * Arrows move the selection, Enter opens, F2 renames, Delete trashes, Esc clears, Ctrl+A selects
- * all; null for anything else (so the key keeps its default behaviour).
+ * all, Ctrl+Shift+C copies the paths (Explorer's "Copy as path"), Shift+F10 or the menu key opens
+ * the item menu; null for anything else (so the key keeps its default behaviour).
  */
 export function itemKeyAction(event: KeyInput): ItemKeyAction | null {
   const ctrl = event.ctrlKey || event.metaKey
   if (event.altKey) return null
-  if (ctrl) return event.key.toLowerCase() === 'a' && !event.shiftKey ? { type: 'selectAll' } : null
+  if (ctrl) {
+    const letter = event.key.toLowerCase()
+    if (letter === 'a' && !event.shiftKey) return { type: 'selectAll' }
+    if (letter === 'c' && event.shiftKey) return { type: 'copyPath' }
+    return null
+  }
+  if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+    return { type: 'menu' }
+  }
   const direction = ARROWS[event.key]
   if (direction) return { type: 'move', direction }
   switch (event.key) {

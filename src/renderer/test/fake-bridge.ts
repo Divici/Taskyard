@@ -42,6 +42,8 @@ export interface FakeBridge extends TaskyardApi {
   }
   desktop: { [K in keyof Api['desktop']]: Mocked<Api['desktop'][K]> }
   theme: { get: Mocked<Api['theme']['get']> }
+  peek: { [K in keyof Api['peek']]: Mocked<Api['peek'][K]> }
+  quickHide: { [K in keyof Api['quickHide']]: Mocked<Api['quickHide'][K]> }
   wallpaper: { get: Mocked<Api['wallpaper']['get']> }
   on: Mocked<Api['on']>
   emit<E extends IpcEventName>(event: E, payload: IpcEvents[E]): void
@@ -165,6 +167,22 @@ export function createFakeBridge(options: FakeBridgeOptions = {}): FakeBridge {
     theme: {
       get: vi.fn(async () => ({ ...FAKE_THEME })) as FakeBridge['theme']['get']
     },
+    // Phase 9: Peek (main owns the state) and quick-hide across displays.
+    peek: {
+      get: vi.fn(async () => ({ peeking: false })),
+      inputFocus: vi.fn(async () => {}),
+      activity: vi.fn(async () => {}),
+      clickOutside: vi.fn(async () => {}),
+      shortcutStatus: vi.fn(async () => ({
+        accelerator: 'Ctrl+Alt+Space',
+        active: 'Ctrl+Alt+Space',
+        error: null
+      }))
+    } as unknown as FakeBridge['peek'],
+    quickHide: {
+      get: vi.fn(async () => false),
+      set: vi.fn(async () => {})
+    } as unknown as FakeBridge['quickHide'],
     wallpaper: {
       get: vi.fn(async (displayId: number) =>
         displayId === FAKE_WALLPAPER.displayId ? structuredClone(FAKE_WALLPAPER) : null

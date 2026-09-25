@@ -117,6 +117,8 @@ export function Toaster(): React.JSX.Element {
   return (
     <section
       aria-label="Notifications"
+      // A click on a toast is not a click on the desktop: it does not end a Peek.
+      data-peek-keep=""
       className="pointer-events-none fixed bottom-6 left-1/2 z-50 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2"
     >
       <div role="status" aria-live="polite" aria-atomic="false" aria-relevant="additions text">

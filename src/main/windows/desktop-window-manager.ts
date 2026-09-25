@@ -40,6 +40,9 @@ export interface PeekOptions {
   hold?: PeekHold
 }
 
+/** Who paused the idle timer: a desktop window's webContents id, or 'manual'. */
+export type IdlePauseSource = number | 'manual'
+
 /** The slice of Electron's `screen` used here; one overload per event, as Electron types it. */
 export interface ScreenLike {
   getAllDisplays(): DisplayInfo[]
@@ -105,8 +108,12 @@ export interface DesktopWindowManager extends DisplaySource, IpcEventEmitter {
   peek(on: boolean, options?: PeekOptions): void
   /** Lets the idle timer run again once no hold remains. */
   releaseHold(hold: PeekHold): void
-  /** Suspends the idle timer (Phase 9: while an input has focus). */
-  pauseIdle(paused: boolean): void
+  /**
+   * Suspends the idle timer while any pauser is paused. `source` is a renderer's webContents id
+   * (a text input focused in that window) or 'manual'. A window's pause is dropped when its page
+   * navigates, crashes, finishes (re)loading or closes; every pause is dropped when Peek ends.
+   */
+  pauseIdle(paused: boolean, source?: IdlePauseSource): void
   /** Restarts the idle timer (Phase 9: pointer or keyboard activity during Peek). */
   noteActivity(): void
   /** Shows and re-seats (or re-raises while peeking) every ready window. */
@@ -131,7 +138,10 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
   const holds = new Set<PeekHold>()
   let peeking = false
   let quitting = false
-  let idlePaused = false
+  /** Pausers of the idle timer; owned here next to the holds, cleared when Peek ends. */
+  const idlePausers = new Set<IdlePauseSource>()
+  /** Each window's webContents id, kept past its destruction (to drop its pause). */
+  const contentsIds = new Map<DesktopWindow, number>()
   /** Locked screen and sleep are separate: the sentinel runs only when neither applies. */
   let locked = false
   let suspended = false
@@ -168,7 +178,16 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
   const events = createEventEmitter(all, (desktop: DesktopWindow) => desktop.contents(), log)
   const peekState = (): PeekState => ({ peeking })
 
+  /** A window's page is gone or new: whatever it reported (its input-focus pause) is stale. */
+  const forgetRenderer = (desktop: DesktopWindow): void => {
+    const id = contentsIds.get(desktop)
+    if (id === undefined || !idlePausers.delete(id)) return
+    scheduleIdle()
+  }
+
   const sendState = (desktop: DesktopWindow): void => {
+    // The fresh page reports its focus again when it hears peek:changed.
+    forgetRenderer(desktop)
     const info = getDisplay(desktop.displayId)
     if (info) events.emitTo(desktop, 'display:changed', info)
     events.emitTo(desktop, 'peek:changed', peekState())
@@ -184,6 +203,8 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
   }
 
   const onWindowClosed = (closed: DesktopWindow, { expected }: { expected: boolean }): void => {
+    forgetRenderer(closed)
+    contentsIds.delete(closed)
     if (byDisplay.get(closed.displayId) !== closed) return
     byDisplay.delete(closed.displayId)
     if (expected || quitting) return
@@ -258,10 +279,12 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
       onClosed: onWindowClosed,
       onCloseRequest,
       onRendererLoaded: sendState,
+      onRendererReset: forgetRenderer,
       devTools: deps.devTools,
       onSettingChange: deps.onSettingChange
     })
     byDisplay.set(display.id, desktop)
+    contentsIds.set(desktop, desktop.window.webContents.id)
   }
 
   /** Opens missing windows before closing stale ones, so the app never has zero windows. */
@@ -289,7 +312,7 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
 
   const scheduleIdle = (): void => {
     clearIdle()
-    if (!peeking || holds.size > 0 || idlePaused) return
+    if (!peeking || holds.size > 0 || idlePausers.size > 0) return
     idleTimer = setTimeout(() => {
       idleTimer = null
       log.info(`peek: idle for ${idleMs} ms, unpeeking`)
@@ -316,7 +339,9 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
       return
     }
 
+    // A Peek's holds and pauses end with it: a later Peek never inherits a stale one.
     holds.clear()
+    idlePausers.clear()
     clearIdle()
     if (!peeking) return
     peeking = false
@@ -394,7 +419,19 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
     }
   }
 
-  const onForeground = (): void => {
+  /**
+   * Phase 9: another app came to the front (taskbar click, Alt+Tab) — the user has left the
+   * Peek, so it ends. Our own windows and the shell window (Win+D) do not end it.
+   */
+  const endPeekOnForeignForeground = (hwnd: Hwnd | null): void => {
+    if (!peeking || hwnd === null || hwnd === api.getShellWindow()) return
+    if (all().some((desktop) => desktop.hwnd === hwnd)) return
+    log.info('peek: another app took the foreground, unpeeking')
+    peek(false)
+  }
+
+  const onForeground = (hwnd: Hwnd | null = null): void => {
+    endPeekOnForeignForeground(hwnd)
     checkSeating('foreground')
     if (settleTimer !== null) clearTimeout(settleTimer)
     settleTimer = setTimeout(() => {
@@ -534,8 +571,9 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
       holds.delete(hold)
       scheduleIdle()
     },
-    pauseIdle(paused) {
-      idlePaused = paused
+    pauseIdle(paused, source = 'manual') {
+      if (paused) idlePausers.add(source)
+      else idlePausers.delete(source)
       scheduleIdle()
     },
     noteActivity() {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { cn } from '../../lib/utils'
 
 /** Characters Windows never allows in a file name. */
@@ -24,6 +24,13 @@ export interface RenameInlineProps {
   blockInvalidChars?: boolean
   maxLength?: number
   className?: string
+  /**
+   * Phase 9: why the last rename failed (e.g. the name exists). Shown under the field until the
+   * name changes; Enter on the same name keeps the field open, leaving it cancels.
+   */
+  error?: string
+  /** The field's starting text (the name that failed); `value` when omitted. */
+  initialDraft?: string
 }
 
 /**
@@ -39,10 +46,15 @@ export function RenameInline({
   readOnly = false,
   blockInvalidChars = true,
   maxLength = MAX_NAME_LENGTH,
-  className
+  className,
+  error,
+  initialDraft
 }: RenameInlineProps): React.JSX.Element {
-  const [draft, setDraft] = useState(value)
+  const start = initialDraft ?? value
+  const [draft, setDraft] = useState(start)
   const [blocked, setBlocked] = useState(false)
+  const [showError, setShowError] = useState(error !== undefined)
+  const errorId = useId()
   const input = useRef<HTMLInputElement>(null)
   // Enter, Esc and blur can all fire for one edit (Enter commits, then the field unmounts and
   // blurs); only the first one counts.
@@ -55,10 +67,18 @@ export function RenameInline({
     field.select()
   }, [readOnly])
 
-  const finish = (commit: boolean): void => {
+  const finish = (commit: boolean, via: 'key' | 'blur' = 'key'): void => {
     if (done.current || readOnly) return
-    done.current = true
     const next = draft.trim()
+    // The name that just failed: Enter shows why again (the field stays), leaving it gives up.
+    if (commit && error !== undefined && next === start.trim()) {
+      if (via === 'key') {
+        setShowError(true)
+        return
+      }
+      commit = false
+    }
+    done.current = true
     if (commit && next !== '' && next !== value) onCommit(next)
     else onCancel()
   }
@@ -70,12 +90,15 @@ export function RenameInline({
         aria-label={label}
         value={draft}
         disabled={readOnly}
+        aria-invalid={showError || undefined}
+        aria-describedby={showError ? errorId : undefined}
         maxLength={maxLength}
         spellCheck={false}
         onChange={(event) => {
           const raw = event.target.value
           const clean = blockInvalidChars ? raw.replace(INVALID_CHARS, '') : raw
           if (clean !== raw) setBlocked(true)
+          setShowError(false)
           setDraft(clean.slice(0, maxLength))
         }}
         onKeyDown={(event) => {
@@ -88,14 +111,23 @@ export function RenameInline({
             finish(false)
           }
         }}
-        onBlur={() => finish(true)}
+        onBlur={() => finish(true, 'blur')}
         // Clicks inside the field must not select, drag or open the item under it.
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => event.stopPropagation()}
         onDoubleClick={(event) => event.stopPropagation()}
         className="w-full rounded-[6px] border border-accent-1/60 bg-black/60 px-1 py-0.5 text-center text-[11px] text-white outline-none focus:ring-2 focus:ring-accent-1/60 disabled:opacity-60 [[data-theme=light]_&]:bg-white/90 [[data-theme=light]_&]:text-text-primary"
       />
-      {blocked && (
+      {showError && error !== undefined && (
+        <span
+          id={errorId}
+          role="alert"
+          className="glass absolute top-full left-1/2 z-10 mt-1 w-56 -translate-x-1/2 border-red-400/70 px-3 py-2 text-left text-[11px] leading-snug"
+        >
+          {error}
+        </span>
+      )}
+      {blocked && !showError && (
         <span
           role="status"
           className="glass absolute top-full left-1/2 z-10 mt-1 w-56 -translate-x-1/2 px-3 py-2 text-left text-[11px] leading-snug"

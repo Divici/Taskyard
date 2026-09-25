@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DesktopItem } from '@shared/schema'
-import { openItems, renameItem, trashItems } from '../../lib/item-actions'
+import { copyPaths, openItems, renameItem, trashItems } from '../../lib/item-actions'
 import { itemKeyAction, type Direction } from '../../lib/keyboard'
 import { useItemsStore } from '../../stores/items'
 import { useSettingsStore } from '../../stores/settings'
@@ -27,6 +27,8 @@ export type ItemIconBindings = Pick<
   | 'onOpen'
   | 'onRenameCommit'
   | 'onRenameCancel'
+  | 'renameError'
+  | 'renameDraft'
 >
 
 export interface ItemListApi {
@@ -38,6 +40,21 @@ export interface ItemListApi {
 
 function focusOption(scope: string, id: string): void {
   document.getElementById(optionDomId(scope, id))?.focus()
+}
+
+/** Opens the item menu of an option from the keyboard, below it, as a right-click there would. */
+function openOptionMenu(scope: string, id: string): void {
+  const option = document.getElementById(optionDomId(scope, id))
+  if (!option) return
+  const rect = option.getBoundingClientRect()
+  option.dispatchEvent(
+    new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.bottom
+    })
+  )
 }
 
 /**
@@ -106,34 +123,56 @@ export function useItemList({ scope, items, neighbor }: ItemListOptions): ItemLi
       case 'selectAll':
         ui.select(ids, tabStop)
         return
+      case 'copyPath':
+        void copyPaths(selectedItems())
+        return
+      case 'menu': {
+        const target =
+          tabStop !== null && ui.selection.includes(tabStop) ? tabStop : ui.selection[0]
+        if (target !== undefined) openOptionMenu(scope, target)
+        return
+      }
     }
   }
 
-  const iconProps = (item: DesktopItem): ItemIconBindings => ({
-    scope,
-    selected: selection.includes(item.id),
-    tabbable: item.id === tabStop,
-    renaming: renaming?.kind === 'item' && renaming.id === item.id,
-    onSelect(event) {
-      const ui = useUiStore.getState()
-      if (event.ctrlKey || event.metaKey) ui.toggleSelect(item.id)
-      else if (event.shiftKey) ui.selectRange(ids, item.id)
-      else ui.select([item.id])
-      setActive(item.id)
-    },
-    onOpen() {
-      void openItems([item])
-    },
-    onRenameCommit(typed) {
-      refocus.current = item.id
-      useUiStore.getState().stopRename()
-      void renameItem(item, typed, showExtension)
-    },
-    onRenameCancel() {
-      refocus.current = item.id
-      useUiStore.getState().stopRename()
+  const iconProps = (item: DesktopItem): ItemIconBindings => {
+    const renamingThis = renaming?.kind === 'item' && renaming.id === item.id
+    return {
+      scope,
+      selected: selection.includes(item.id),
+      tabbable: item.id === tabStop,
+      renaming: renamingThis,
+      renameError: renamingThis ? renaming.error : undefined,
+      renameDraft: renamingThis ? renaming.draft : undefined,
+      onSelect(event) {
+        const ui = useUiStore.getState()
+        if (event.ctrlKey || event.metaKey) ui.toggleSelect(item.id)
+        else if (event.shiftKey) ui.selectRange(ids, item.id)
+        else ui.select([item.id])
+        setActive(item.id)
+      },
+      onOpen() {
+        void openItems([item])
+      },
+      onRenameCommit(typed) {
+        refocus.current = item.id
+        useUiStore.getState().stopRename()
+        void renameItem(item, typed, showExtension).then((outcome) => {
+          // The name itself was the problem (it exists, or Windows refuses it): reopen the field
+          // on it with the reason, unless something else is being renamed by now.
+          if (outcome.status !== 'retry' || useUiStore.getState().renaming !== null) return
+          refocus.current = null
+          useUiStore
+            .getState()
+            .startRename({ kind: 'item', id: item.id, error: outcome.error, draft: typed })
+        })
+      },
+      onRenameCancel() {
+        refocus.current = item.id
+        useUiStore.getState().stopRename()
+      }
     }
-  })
+  }
 
   return { onKeyDown, iconProps }
 }

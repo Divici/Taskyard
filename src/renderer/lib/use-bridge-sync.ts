@@ -5,6 +5,8 @@ import { getBridge } from './bridge'
 import { subscribeBridgeEvents } from './bridge-events'
 import { connectDesktop } from './desktop-sync'
 import { connectDisplay } from './display-sync'
+import { connectPeek } from './peek-sync'
+import { connectQuickHide } from './quick-hide'
 import { connectReconcile } from './reconcile-sync'
 import { LOAD_FAILED_TOAST } from './storage-messages'
 import { connectTheme } from './theme'
@@ -32,8 +34,13 @@ export function useBridgeSync(): void {
     const disconnectReconcile = connectReconcile()
     const disconnectDisplay = connectDisplay(api, window.location.search)
     const disconnectDesktop = connectDesktop(api)
+    // Phase 9: Peek (state pull, idle/click-outside signals) and quick-hide across displays.
+    const disconnectPeek = connectPeek(api)
+    const disconnectQuickHide = connectQuickHide(api)
     void hydrateStores(api)
     return () => {
+      disconnectQuickHide()
+      disconnectPeek()
       disconnectReconcile()
       disconnectDesktop()
       disconnectDisplay()

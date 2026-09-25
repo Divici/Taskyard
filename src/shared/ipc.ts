@@ -178,6 +178,27 @@ export interface PeekState {
   peeking: boolean
 }
 
+/**
+ * Phase 9: why the Peek shortcut could not be registered.
+ * - `invalid`: not an accelerator Electron accepts (or one too risky as a global shortcut);
+ * - `in-use`: another app owns it (`globalShortcut.register` returned false).
+ */
+export type ShortcutError = 'invalid' | 'in-use'
+
+/** Phase 9: the Peek shortcut's registration (`peek:shortcutStatus`, event `peek:shortcut`). */
+export interface ShortcutStatus {
+  /** What settings asked for (canonical when it parsed). */
+  accelerator: string
+  /** What is registered now: `accelerator`, or the previous shortcut kept after a failure. */
+  active: string | null
+  error: ShortcutError | null
+}
+
+/** Phase 9: quick-hide, shared by every display's window (in main's memory, never persisted). */
+export interface QuickHideState {
+  hidden: boolean
+}
+
 export interface WallpaperChanged {
   displayId: number
   /** Cache-busting counter for `taskyard://wallpaper/<displayId>?v=<n>`. */
@@ -219,6 +240,8 @@ export interface IpcEvents {
   'storage:changed': StorageChanged
   'theme:changed': ThemeInfo
   'peek:changed': PeekState
+  'peek:shortcut': ShortcutStatus
+  'quickHide:changed': QuickHideState
   'display:changed': DisplayInfo
   'wallpaper:changed': WallpaperChanged
 }
@@ -233,6 +256,8 @@ export const EVENT_CHANNELS = [
   'storage:changed',
   'theme:changed',
   'peek:changed',
+  'peek:shortcut',
+  'quickHide:changed',
   'display:changed',
   'wallpaper:changed'
 ] as const satisfies readonly IpcEventName[]
@@ -253,6 +278,15 @@ export const IPC = {
   storage: { load: 'storage:load', save: 'storage:save', status: 'storage:status' },
   app: { quit: 'app:quit', openExternal: 'app:openExternal' },
   display: { get: 'display:get', list: 'display:list' },
+  // Phase 9: Peek (src/main/app/shortcuts.ts) and quick-hide (src/main/app/quick-hide.ts).
+  peek: {
+    get: 'peek:get',
+    inputFocus: 'peek:inputFocus',
+    activity: 'peek:activity',
+    clickOutside: 'peek:clickOutside',
+    shortcutStatus: 'peek:shortcutStatus'
+  },
+  quickHide: { get: 'quickHide:get', set: 'quickHide:set' },
   desktop: {
     list: 'desktop:list',
     open: 'desktop:open',
@@ -286,6 +320,20 @@ export interface IpcRequests {
   /** null when main knows no display with that id (e.g. it was just unplugged). */
   'display:get': { args: [id: number]; result: DisplayInfo | null }
   'display:list': { args: []; result: DisplayInfo[] }
+  /** Phase 9: whether Peek is on now (a window that loads or reloads during a Peek). */
+  'peek:get': { args: []; result: PeekState }
+  /** Phase 9: a text input in the calling window gained or lost focus (pauses the idle unpeek). */
+  'peek:inputFocus': { args: [focused: boolean]; result: void }
+  /** Phase 9: pointer or keyboard activity during a Peek (restarts the idle unpeek). */
+  'peek:activity': { args: []; result: void }
+  /** Phase 9: a click outside every group and panel during a Peek (ends it). */
+  'peek:clickOutside': { args: []; result: void }
+  /** Phase 9: the Peek shortcut's registration outcome. */
+  'peek:shortcutStatus': { args: []; result: ShortcutStatus }
+  /** Phase 9: whether the desktop is quick-hidden (every display together). */
+  'quickHide:get': { args: []; result: boolean }
+  /** Phase 9: hides or shows every display's icons and groups; broadcast as quickHide:changed. */
+  'quickHide:set': { args: [hidden: boolean]; result: void }
   /** Every desktop item main knows (waits for the boot scan). */
   'desktop:list': { args: []; result: DesktopItem[] }
   /** `.url` → its URL in the browser; everything else → its default app (shell.openPath). */

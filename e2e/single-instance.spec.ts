@@ -32,6 +32,10 @@ test('a second launch exits after signalling the running instance', async () => 
 
     expect(exitCode).toBe(0)
     await expect.poll(() => profile.readLog()).toContain('app: second-instance received')
+    // Phase 9: the running instance answers with a Peek (the user is looking for Taskyard).
+    await expect.poll(() => profile.readLog()).toContain('peek: on')
+    const page = await first.firstWindow()
+    await expect(page.getByRole('main')).toHaveAttribute('data-peeking', 'true')
     // Only the primary ever initialised the logger and opened windows (one per display).
     expect(profile.readLog().match(/app: starting Taskyard/g)).toHaveLength(1)
     const displayCount = await first.evaluate(({ screen }) => screen.getAllDisplays().length)

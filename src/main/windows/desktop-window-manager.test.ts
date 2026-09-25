@@ -276,6 +276,120 @@ describe('peek', () => {
     expect(manager.peeking).toBe(false)
   })
 
+  it('ends a peek when another app takes the foreground (taskbar click, Alt+Tab)', () => {
+    start()
+    allReady()
+    manager.peek(true, { hold: 'inspector' })
+
+    api.emitForeground(FAKE_APP_WINDOW)
+
+    expect(manager.peeking).toBe(false)
+    expect(windows().every((w) => api.isAbove(w.hwnd, api.getShellWindow()!))).toBe(true)
+    expect(log.info).toHaveBeenCalledWith(expect.stringContaining('another app'))
+  })
+
+  it('keeps the peek when its own window or the shell window becomes the foreground', () => {
+    start()
+    allReady()
+    manager.peek(true)
+
+    api.emitForeground(windows()[0].hwnd)
+    api.emitForeground(api.getShellWindow())
+    api.emitForeground(null)
+
+    expect(manager.peeking).toBe(true)
+  })
+
+  describe('idle pause ownership (Phase 9 review fixes)', () => {
+    const contentsId = (index: number): number => windows()[index].webContents.id
+
+    it('a window typing pauses the idle timer; each window owns its own pause', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      manager.pauseIdle(true, contentsId(0))
+      manager.pauseIdle(true, contentsId(1))
+      manager.pauseIdle(false, contentsId(0))
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS * 2)
+      expect(manager.peeking).toBe(true)
+      manager.pauseIdle(false, contentsId(1))
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS)
+      expect(manager.peeking).toBe(false)
+    })
+
+    it('a renderer that reloads while typing drops its pause (navigation starts)', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      manager.pauseIdle(true, contentsId(0))
+      windows()[0].webContents.emit('did-start-navigation', {
+        isMainFrame: true,
+        isSameDocument: false
+      })
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS)
+      expect(manager.peeking).toBe(false)
+    })
+
+    it('an in-page navigation or a subframe keeps the pause', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      manager.pauseIdle(true, contentsId(0))
+      windows()[0].webContents.emit('did-start-navigation', {
+        isMainFrame: true,
+        isSameDocument: true
+      })
+      windows()[0].webContents.emit('did-start-navigation', {
+        isMainFrame: false,
+        isSameDocument: false
+      })
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS * 2)
+      expect(manager.peeking).toBe(true)
+    })
+
+    it('a renderer that crashes, or reloads and finishes loading, while typing drops its pause', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      manager.pauseIdle(true, contentsId(0))
+      windows()[0].webContents.emit('render-process-gone', {}, { reason: 'crashed' })
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS)
+      expect(manager.peeking).toBe(false)
+
+      manager.peek(true)
+      manager.pauseIdle(true, contentsId(1))
+      windows()[1].webContents.emit('did-finish-load')
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS)
+      expect(manager.peeking).toBe(false)
+    })
+
+    it('a display window closed while typing drops its pause', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      const typing = contentsId(1)
+      manager.pauseIdle(true, typing)
+      electron.screen.removeDisplay(SECONDARY_DISPLAY.id)
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS)
+      expect(manager.peeking).toBe(false)
+    })
+
+    it('a stale pause never outlives its Peek: a later held Peek idles out once released', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      manager.pauseIdle(true, contentsId(0))
+      manager.peek(false)
+
+      manager.peek(true, { hold: 'inspector' })
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS * 2)
+      expect(manager.peeking).toBe(true)
+      manager.releaseHold('inspector')
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS)
+      expect(manager.peeking).toBe(false)
+    })
+  })
+
   it('pauses the idle timer while paused (for example while typing)', () => {
     start()
     manager.peek(true)

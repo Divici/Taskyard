@@ -2,6 +2,7 @@ import { GROUP_BODY_PADDING, groupCell, groupColumns, type IconSize } from '@sha
 import type { DesktopItem, Group } from '@shared/schema'
 import { gridNeighbor } from '../../lib/keyboard'
 import { DesktopIcon } from '../icon/DesktopIcon'
+import { IconContextMenu } from '../icon/IconContextMenu'
 import { useItemList } from '../icon/useItemList'
 import { useUiStore } from '../../stores/ui'
 
@@ -37,6 +38,8 @@ function DropIndicator({
 
 export interface GroupBodyProps {
   group: Pick<Group, 'id' | 'title'>
+  /** The display the group is on (its icons' menus act there). */
+  displayId: number
   /** The members that are on the desktop now, in display order (sorted by the group's sort). */
   items: readonly DesktopItem[]
   /** The group's current width (live while resizing): sets the number of columns. */
@@ -54,6 +57,7 @@ export interface GroupBodyProps {
  */
 export function GroupBody({
   group,
+  displayId,
   items,
   width,
   iconSize,
@@ -107,14 +111,15 @@ export function GroupBody({
       }}
     >
       {items.map((item) => (
-        <DesktopIcon
-          key={item.id}
-          item={item}
-          variant="group"
-          iconSize={iconSize}
-          showExtension={showExtension}
-          {...list.iconProps(item)}
-        />
+        <IconContextMenu key={item.id} item={item} displayId={displayId} groupId={group.id}>
+          <DesktopIcon
+            item={item}
+            variant="group"
+            iconSize={iconSize}
+            showExtension={showExtension}
+            {...list.iconProps(item)}
+          />
+        </IconContextMenu>
       ))}
       {insertAt !== null && (
         <DropIndicator index={insertAt} columns={columns} cellHeight={cell.height} />

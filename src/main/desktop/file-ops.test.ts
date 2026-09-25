@@ -173,6 +173,34 @@ describe('trash, open, showInFolder', () => {
     expect(shell.openPath).toHaveBeenCalledExactlyOnceWith(join(h.desktop, 'doc.pdf'))
   })
 
+  it('open: a .lnk opens through the shell (its target), a folder in Explorer; never the target path directly', async () => {
+    const lnkId = await place('Tool.lnk')
+    mkdirSync(join(h.desktop, 'Projects'))
+    await h.scan()
+    const folderId = h.idOf(join(h.desktop, 'Projects'))
+    // Even with a known target, the link itself is opened, so its arguments and working
+    // directory apply, as they do when it is double-clicked on the Windows desktop.
+    h.model.put({ ...h.model.get(lnkId)!, targetPath: 'C:\\Tools\\tool.exe' })
+
+    expect(await ops.open(lnkId)).toEqual({ ok: true })
+    expect(await ops.open(folderId)).toEqual({ ok: true })
+    expect(shell.openPath.mock.calls).toEqual([
+      [join(h.desktop, 'Tool.lnk')],
+      [join(h.desktop, 'Projects')]
+    ])
+    expect(shell.openExternal).not.toHaveBeenCalled()
+  })
+
+  it('open: an openExternal rejection for a .url is a typed failure, not a crash', async () => {
+    writeFileSync(join(h.desktop, 'Site.url'), '')
+    await h.scan()
+    const urlId = h.idOf(join(h.desktop, 'Site.url'))
+    h.model.put({ ...h.model.get(urlId)!, url: 'https://example.com/' })
+    shell.openExternal.mockRejectedValueOnce(new Error('Failed to open'))
+
+    expect(await ops.open(urlId)).toEqual({ ok: false, code: 'failed', message: 'Failed to open' })
+  })
+
   it('open: a .url without a URL opens the file; an openPath error string is a typed failure', async () => {
     const urlId = await place('Broken.url')
     expect(await ops.open(urlId)).toEqual({ ok: true })

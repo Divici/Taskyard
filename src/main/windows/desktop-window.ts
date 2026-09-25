@@ -91,6 +91,11 @@ export interface DesktopWebContents extends WebContentsLike {
     listener: (event: { preventDefault(): void }, url: string) => void
   ): unknown
   on(event: 'render-process-gone', listener: (event: unknown, details: unknown) => void): unknown
+  /** Electron 30+ passes one event object carrying the navigation's details. */
+  on(
+    event: 'did-start-navigation',
+    listener: (details: { isMainFrame?: boolean; isSameDocument?: boolean }) => void
+  ): unknown
   on(
     event: 'preload-error',
     listener: (event: unknown, preloadPath: string, error: Error) => void
@@ -157,6 +162,11 @@ export interface DesktopWindowDeps {
   readyTimeoutMs?: number
   /** A renderer finished (re)loading and needs its display and peek state again. */
   onRendererLoaded?: (window: DesktopWindow) => void
+  /**
+   * Its page is going away (a main-frame navigation starts, or the renderer process died): any
+   * state that page reported (e.g. Peek's input-focus pause) is stale from here on.
+   */
+  onRendererReset?: (window: DesktopWindow) => void
   /** F12 toggles (detached) DevTools. Development builds only: `!app.isPackaged`. */
   devTools?: boolean
   /** The window received WM_SETTINGCHANGE (every desktop window does; the listener debounces). */
@@ -410,8 +420,13 @@ function setUpDesktopWindow(
     }
     deps.onRendererLoaded?.(desktop)
   })
+  webContents.on('did-start-navigation', (details) => {
+    if (details?.isMainFrame === false || details?.isSameDocument === true) return
+    deps.onRendererReset?.(desktop)
+  })
   webContents.on('render-process-gone', (_event, details) => {
     log.error(`desktop: renderer process gone on display ${display.id}`, details)
+    deps.onRendererReset?.(desktop)
     if (window.isDestroyed()) return
     if (gaveUp) {
       // The retry crashed as well: stay hidden and wait another cool-down.

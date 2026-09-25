@@ -49,6 +49,19 @@ export function createTaskyardApi(
       list: () => invoke(IPC.display.list)
     },
 
+    peek: {
+      get: () => invoke(IPC.peek.get),
+      inputFocus: (focused) => invoke(IPC.peek.inputFocus, focused),
+      activity: () => invoke(IPC.peek.activity),
+      clickOutside: () => invoke(IPC.peek.clickOutside),
+      shortcutStatus: () => invoke(IPC.peek.shortcutStatus)
+    },
+
+    quickHide: {
+      get: () => invoke(IPC.quickHide.get),
+      set: (hidden) => invoke(IPC.quickHide.set, hidden)
+    },
+
     desktop: {
       list: () => invoke(IPC.desktop.list),
       open: (id) => invoke(IPC.desktop.open, id),

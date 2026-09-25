@@ -1,6 +1,6 @@
 import { useDraggable } from '@dnd-kit/core'
 import { Cloud, Lock } from 'lucide-react'
-import type { CSSProperties } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 import { ICON_GLYPH, LOOSE_GLYPH, type IconSize } from '@shared/group-metrics'
 import type { DesktopItem } from '@shared/schema'
 import { cn } from '../../lib/utils'
@@ -9,7 +9,17 @@ import { ItemIcon, ShortcutArrow } from '../desktop/ItemIcon'
 import { displayName, optionDomId } from './item-label'
 import { RenameInline } from './RenameInline'
 
-export interface DesktopIconProps {
+/**
+ * Props the icon passes through to its element (Phase 9): the item menu's Radix trigger clones
+ * the icon with its handlers, `data-state` and `ref`. Handlers dnd-kit also uses run both.
+ */
+type PassThroughProps = Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  'onSelect' | 'style' | 'className' | 'role' | 'id' | 'title' | 'tabIndex' | 'children'
+>
+
+export interface DesktopIconProps extends PassThroughProps {
+  ref?: React.Ref<HTMLDivElement>
   item: DesktopItem
   /** `group`: glass glyph tile, one-line label; `loose`: bare icon, two-line label (Windows). */
   variant: 'group' | 'loose'
@@ -25,8 +35,40 @@ export interface DesktopIconProps {
   onOpen?(): void
   onRenameCommit?(name: string): void
   onRenameCancel?(): void
+  /** Phase 9: why the last rename failed, and the name that failed (the field reopens on it). */
+  renameError?: string
+  renameDraft?: string
   style?: CSSProperties
   className?: string
+}
+
+type Handler = (event: never) => void
+
+/** Handlers present in both sets, each calling `first` then `second`. */
+function bothHandlers(
+  first: Readonly<Record<string, unknown>>,
+  second: Readonly<Record<string, unknown>> | undefined
+): Record<string, Handler> {
+  const merged: Record<string, Handler> = {}
+  for (const [name, handler] of Object.entries(second ?? {})) {
+    const own = first[name]
+    if (typeof own !== 'function' || typeof handler !== 'function') continue
+    merged[name] = (event) => {
+      ;(own as Handler)(event)
+      ;(handler as Handler)(event)
+    }
+  }
+  return merged
+}
+
+/** Sets every ref (a callback or an object) to `node`. */
+function mergeRefs<T>(...refs: Array<React.Ref<T> | undefined>): React.RefCallback<T> {
+  return (node) => {
+    for (const ref of refs) {
+      if (typeof ref === 'function') ref(node)
+      else if (ref) ref.current = node
+    }
+  }
 }
 
 const BADGE =
@@ -50,8 +92,12 @@ export function DesktopIcon({
   onOpen,
   onRenameCommit,
   onRenameCancel,
+  renameError,
+  renameDraft,
   style,
-  className
+  className,
+  ref,
+  ...passThrough
 }: DesktopIconProps): React.JSX.Element {
   // Phase 8: every icon is draggable (dnd-kit, 6 px before a press becomes a drag; not while its
   // name is being edited). Only the listeners are spread: the option keeps its own role and tab
@@ -61,6 +107,7 @@ export function DesktopIcon({
     data: { kind: 'item', itemId: item.id },
     disabled: renaming
   })
+  const nodeRef = useMemo(() => mergeRefs(setNodeRef, ref), [setNodeRef, ref])
   const dragSource = useUiStore((state) => state.drag?.ids.includes(item.id) ?? false)
   const name = displayName(item, showExtension)
   const grouped = variant === 'group'
@@ -68,8 +115,10 @@ export function DesktopIcon({
 
   return (
     <div
-      ref={setNodeRef}
+      {...passThrough}
+      ref={nodeRef}
       {...listeners}
+      {...bothHandlers(passThrough, listeners)}
       aria-describedby={attributes['aria-describedby'] || undefined}
       id={optionDomId(scope, item.id)}
       role="option"
@@ -127,6 +176,8 @@ export function DesktopIcon({
           value={name}
           label={`Rename ${name}`}
           readOnly={item.readonly}
+          error={renameError}
+          initialDraft={renameDraft}
           onCommit={(next) => onRenameCommit?.(next)}
           onCancel={() => onRenameCancel?.()}
         />

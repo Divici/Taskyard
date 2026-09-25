@@ -5,9 +5,12 @@ import type { DesktopItem, Point } from '@shared/schema'
 import { spatialNeighbor } from '../../lib/keyboard'
 import { cn } from '../../lib/utils'
 import { DesktopIcon } from '../icon/DesktopIcon'
+import { IconContextMenu } from '../icon/IconContextMenu'
 import { useItemList } from '../icon/useItemList'
 
 export interface LooseIconLayerProps {
+  /** The display the icons are on (their menus act there). */
+  displayId: number
   /** This display's loose positions (file id → top-left, window coordinates). */
   loose: Readonly<Record<string, Point>>
   /** The items on the desktop now, by id (ids not in it are missing files: not drawn). */
@@ -26,6 +29,7 @@ export interface LooseIconLayerProps {
  * droppable to `data-loose-layer`.
  */
 export function LooseIconLayer({
+  displayId,
   loose,
   byId,
   cell,
@@ -71,16 +75,17 @@ export function LooseIconLayer({
       )}
     >
       {placed.map(({ item, point }) => (
-        <DesktopIcon
-          key={item.id}
-          item={item}
-          variant="loose"
-          iconSize={iconSize}
-          showExtension={showExtension}
-          {...list.iconProps(item)}
-          className="pointer-events-auto absolute"
-          style={{ left: point.x, top: point.y, width: cell.width, height: cell.height }}
-        />
+        <IconContextMenu key={item.id} item={item} displayId={displayId} groupId={null}>
+          <DesktopIcon
+            item={item}
+            variant="loose"
+            iconSize={iconSize}
+            showExtension={showExtension}
+            {...list.iconProps(item)}
+            className="pointer-events-auto absolute"
+            style={{ left: point.x, top: point.y, width: cell.width, height: cell.height }}
+          />
+        </IconContextMenu>
       ))}
     </div>
   )

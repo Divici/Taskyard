@@ -95,6 +95,27 @@ describe('createTaskyardApi', () => {
     expect(getPathForFile).toHaveBeenCalledExactlyOnceWith(file)
   })
 
+  it('maps the Peek and quick-hide methods to their channels (Phase 9)', async () => {
+    const ipc = fakeIpcRenderer()
+    const api = createTaskyardApi(ipc, versions)
+    await api.peek.get()
+    await api.peek.inputFocus(true)
+    await api.peek.activity()
+    await api.peek.clickOutside()
+    await api.peek.shortcutStatus()
+    await api.quickHide.get()
+    await api.quickHide.set(true)
+    expect(ipc.invoke.mock.calls).toEqual([
+      ['peek:get'],
+      ['peek:inputFocus', true],
+      ['peek:activity'],
+      ['peek:clickOutside'],
+      ['peek:shortcutStatus'],
+      ['quickHide:get'],
+      ['quickHide:set', true]
+    ])
+  })
+
   it('returns what main returned', async () => {
     const ipc = fakeIpcRenderer()
     ipc.invoke.mockResolvedValueOnce([{ id: 1 }])

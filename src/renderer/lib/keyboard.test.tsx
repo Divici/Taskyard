@@ -32,6 +32,12 @@ describe('itemKeyAction', () => {
     expect(key('A', { ctrlKey: true })).toEqual({ type: 'selectAll' })
   })
 
+  it('Ctrl+Shift+C copies the selected items’ paths (Explorer’s "Copy as path")', () => {
+    expect(key('C', { ctrlKey: true, shiftKey: true })).toEqual({ type: 'copyPath' })
+    expect(key('c', { ctrlKey: true, shiftKey: true })).toEqual({ type: 'copyPath' })
+    expect(key('c', { ctrlKey: true })).toBeNull()
+  })
+
   it('ignores other keys and modified variants it does not own', () => {
     expect(key('a')).toBeNull()
     expect(key('Tab')).toBeNull()
@@ -193,6 +199,27 @@ describe('keyboard in a group', () => {
     expect(selection()).toEqual(['1:1', '1:2', '1:3', '1:4', '1:5', '1:6'])
     await user.keyboard('{Escape}')
     expect(selection()).toEqual([])
+  })
+
+  it('Ctrl+Shift+C copies the selected paths, one per line', async () => {
+    const { user } = setup()
+    await user.click(option('one'))
+    await user.keyboard('{Shift>}')
+    await user.click(option('two'))
+    await user.keyboard('{/Shift}{Control>}{Shift>}C{/Shift}{/Control}')
+    await waitFor(async () =>
+      expect(await navigator.clipboard.readText()).toBe(
+        'C:\\Users\\me\\Desktop\\one.txt\r\nC:\\Users\\me\\Desktop\\two.txt'
+      )
+    )
+  })
+
+  it('the context-menu key (Shift+F10) opens the item menu on the focused item', async () => {
+    const { user } = setup()
+    await user.click(option('two'))
+    await user.keyboard('{Shift>}{F10}{/Shift}')
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getByRole('menuitem', { name: /^Open$/ })).toBeInTheDocument()
   })
 
   it('F2 does nothing on a read-only item', async () => {

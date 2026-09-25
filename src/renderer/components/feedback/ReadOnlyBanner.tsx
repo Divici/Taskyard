@@ -13,6 +13,7 @@ export function ReadOnlyBanner(): React.JSX.Element | null {
   return (
     <div
       role="alert"
+      data-peek-keep=""
       className="fixed inset-x-0 top-0 z-50 flex items-start gap-3 border-b border-amber-500/50 bg-amber-50 px-4 py-2 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-50"
     >
       <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />

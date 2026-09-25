@@ -18,6 +18,7 @@ export function EmptyHint({ area, onAutoOrganize, onDismiss }: EmptyHintProps): 
   return (
     <section
       aria-label="Tidy up your desktop"
+      data-peek-keep=""
       className="glass absolute z-[9000] flex flex-col gap-3 p-5"
       style={{
         width: WIDTH,

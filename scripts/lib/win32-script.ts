@@ -49,6 +49,8 @@ export interface ScriptWin32 {
   pressAltF4(): void
   /** A real Ctrl+<key> keystroke (`key` is a virtual-key code, e.g. 0x57 for W). */
   pressCtrl(key: number): void
+  /** Presses the virtual keys down in order and releases them in reverse (a shortcut chord). */
+  pressChord(keys: readonly number[]): void
   postClose(hwnd: Hwnd): void
   cursor(): { x: number; y: number }
   moveCursor(x: number, y: number): void
@@ -286,6 +288,10 @@ export function loadScriptWin32(koffi: Koffi): ScriptWin32 {
       keybdEvent(key, 0, 0, 0)
       keybdEvent(key, 0, KEYEVENTF_KEYUP, 0)
       keybdEvent(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+    },
+    pressChord(keys) {
+      for (const key of keys) keybdEvent(key, 0, 0, 0)
+      for (const key of [...keys].reverse()) keybdEvent(key, 0, KEYEVENTF_KEYUP, 0)
     },
     postClose: (hwnd) => void PostMessageW(hwnd, WM_CLOSE, 0, 0),
     cursor() {

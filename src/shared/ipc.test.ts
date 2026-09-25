@@ -14,6 +14,14 @@ describe('IPC channel names', () => {
       storage: { load: 'storage:load', save: 'storage:save', status: 'storage:status' },
       app: { quit: 'app:quit', openExternal: 'app:openExternal' },
       display: { get: 'display:get', list: 'display:list' },
+      peek: {
+        get: 'peek:get',
+        inputFocus: 'peek:inputFocus',
+        activity: 'peek:activity',
+        clickOutside: 'peek:clickOutside',
+        shortcutStatus: 'peek:shortcutStatus'
+      },
+      quickHide: { get: 'quickHide:get', set: 'quickHide:set' },
       desktop: {
         list: 'desktop:list',
         open: 'desktop:open',
@@ -56,6 +64,8 @@ describe('IPC channel names', () => {
         'storage:changed',
         'theme:changed',
         'peek:changed',
+        'peek:shortcut',
+        'quickHide:changed',
         'display:changed',
         'wallpaper:changed'
       ].sort()

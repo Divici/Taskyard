@@ -39,6 +39,12 @@ export const MAX_TOASTS = 5
 export interface RenameTarget {
   kind: 'item' | 'group'
   id: string
+  /**
+   * Phase 9: the field reopened after a failed rename (a name that exists, or one Windows
+   * refuses): the message to show in it, and the name that failed (the field starts with it).
+   */
+  error?: string
+  draft?: string
 }
 
 export interface ConfirmInput {
@@ -99,7 +105,10 @@ export interface UiState {
   selectionAnchor: string | null
   /** The rubber band being dragged on the canvas (window coordinates), or null. */
   marquee: Rect | null
-  /** Double-click on the empty desktop hides the icons and groups (not persisted). */
+  /**
+   * Double-click on the empty desktop hides the icons and groups (not persisted; every display
+   * follows it through main, lib/quick-hide.ts). Phase 10's tools widget reads it too.
+   */
   quickHidden: boolean
   /** The settings inspector (Phase 11 renders it; the canvas menu opens it). */
   inspectorOpen: boolean

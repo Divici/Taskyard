@@ -159,6 +159,7 @@ export function GroupWindow({
         {!group.rolledUp && (
           <GroupBody
             group={group}
+            displayId={displayId}
             items={items}
             width={rect.width}
             iconSize={iconSize}

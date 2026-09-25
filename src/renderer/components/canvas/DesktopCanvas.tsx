@@ -13,6 +13,7 @@ import {
   refreshDesktop,
   sortLooseIcons
 } from '../../lib/canvas-actions'
+import { toggleQuickHide } from '../../lib/quick-hide'
 import { useItemsStore } from '../../stores/items'
 import { useLayoutStore } from '../../stores/layout'
 import { useSettingsStore } from '../../stores/settings'
@@ -113,12 +114,14 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
             className="absolute inset-0"
             {...marquee.handlers}
             onDoubleClick={() => {
-              if (settings.quickHideOnDoubleClick) useUiStore.getState().toggleQuickHidden()
+              // Phase 9: every display hides together (lib/quick-hide.ts).
+              if (settings.quickHideOnDoubleClick) toggleQuickHide()
             }}
           />
         </CanvasContextMenu>
         <CanvasDropZone cell={cell} />
         <LooseIconLayer
+          displayId={displayId}
           loose={loose}
           byId={byId}
           cell={cell}

@@ -106,4 +106,37 @@ describe('RenameInline', () => {
     await user.type(input, 'x{Enter}')
     expect(onCommit).not.toHaveBeenCalled()
   })
+
+  describe('with an error from a failed rename (Phase 9)', () => {
+    const ERROR = 'An item named “Plan.txt” already exists.'
+
+    it('reopens on the name that failed, selected, with the error announced and tied to the field', () => {
+      const { input } = setup({ error: ERROR, initialDraft: 'Plan' })
+      expect(input.value).toBe('Plan')
+      expect(input).toHaveFocus()
+      expect([input.selectionStart, input.selectionEnd]).toEqual([0, 4])
+      expect(input).toHaveAttribute('aria-invalid', 'true')
+      expect(screen.getByRole('alert')).toHaveTextContent(ERROR)
+      expect(input).toHaveAccessibleDescription(ERROR)
+    })
+
+    it('a corrected name commits; the error clears as soon as the name changes', async () => {
+      const { input, onCommit, user } = setup({ error: ERROR, initialDraft: 'Plan' })
+      await user.type(input, '{End} 2')
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(input).not.toHaveAttribute('aria-invalid')
+      await user.keyboard('{Enter}')
+      expect(onCommit).toHaveBeenCalledExactlyOnceWith('Plan 2')
+    })
+
+    it('Enter on the same failing name keeps the field open; leaving it cancels (no retry loop)', async () => {
+      const { onCommit, onCancel, user } = setup({ error: ERROR, initialDraft: 'Plan' })
+      await user.keyboard('{Enter}')
+      expect(onCommit).not.toHaveBeenCalled()
+      expect(onCancel).not.toHaveBeenCalled()
+      await user.tab()
+      expect(onCancel).toHaveBeenCalledOnce()
+      expect(onCommit).not.toHaveBeenCalled()
+    })
+  })
 })

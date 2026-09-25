@@ -75,6 +75,14 @@ export interface Win32Probe {
   /** Like altF4, with Ctrl+<letter>. */
   ctrl(hwnd: Hwnd, letter: string): boolean
   foregroundWindow(): Hwnd | null
+  /** The top-level window at a screen point (physical pixels). */
+  windowAt(x: number, y: number): Hwnd | null
+  /** A real left click at a screen point; the cursor goes back where it was. */
+  clickAt(x: number, y: number): void
+  /** Makes `hwnd` the foreground window, then presses the chord of virtual keys for real. */
+  chord(hwnd: Hwnd, keys: readonly number[]): boolean
+  /** A visible top-level Chromium window with this exact title, or null. */
+  findWindowByTitle(title: string): Hwnd | null
 }
 
 /** Reads another process's windows through the app's koffi layer and the script helpers. */
@@ -128,6 +136,23 @@ export async function win32Probe(): Promise<Win32Probe> {
       return focused
     },
     foregroundWindow: () => win32.foregroundWindow(),
+    windowAt: (x, y) => win32.topLevelWindowAt(x, y),
+    clickAt(x, y) {
+      const cursor = win32.cursor()
+      win32.clickAt(x, y)
+      // Injected input lands asynchronously at the cursor: let it land before moving back.
+      sleepSync(100)
+      win32.moveCursor(cursor.x, cursor.y)
+    },
+    chord(hwnd, keys) {
+      const focused = focus(hwnd)
+      if (focused) win32.pressChord(keys)
+      return focused
+    },
+    findWindowByTitle: (title) =>
+      win32
+        .findWindows('Chrome_WidgetWin_1')
+        .find((hwnd) => win32.isVisible(hwnd) && win32.titleOf(hwnd) === title) ?? null,
     isSeated: (hwnd) => {
       const shell = api.getShellWindow()
       return shell !== null && api.isAbove(hwnd, shell)

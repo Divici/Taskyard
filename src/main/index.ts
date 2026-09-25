@@ -4,6 +4,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  globalShortcut,
   ipcMain,
   Menu,
   nativeImage,
@@ -20,6 +21,8 @@ import { boot, STOP_BOOT } from './app/boot'
 import { applyUserDataOverride, ENV, resolveLogLevel } from './app/env'
 import { configureLogger, defaultLogDir, LOG_FILE_NAME } from './app/logger'
 import { installQuitPath } from './app/quit-path'
+import { createQuickHide, registerQuickHideIpc } from './app/quick-hide'
+import { createPeekShortcuts, registerPeekIpc, type PeekShortcuts } from './app/shortcuts'
 import { acquireSingleInstanceLock } from './app/single-instance'
 import { startDesktop } from './app/start-desktop'
 import { createThemeService, registerThemeIpc, type ThemeService } from './app/theme-service'
@@ -65,13 +68,17 @@ protocol.registerSchemesAsPrivileged([
   { scheme: TASKYARD_SCHEME, privileges: { ...TASKYARD_SCHEME_PRIVILEGES } }
 ])
 
+/** Phase 9: set once Peek exists (startPrimaryInstance); Phase 11's tray uses `togglePeek`. */
+let peekShortcuts: PeekShortcuts | null = null
+
 if (acquireSingleInstanceLock(app, onSecondInstance)) {
   startPrimaryInstance()
 }
 
 function onSecondInstance(): void {
-  // Phase 9 turns a second launch into Peek.
-  log.info('app: second-instance received')
+  // A second launch means the user is looking for Taskyard: Peek shows it over their apps.
+  log.info('app: second-instance received, peeking')
+  peekShortcuts?.showPeek()
 }
 
 function startPrimaryInstance(): void {
@@ -108,12 +115,27 @@ function startPrimaryInstance(): void {
   // (none exist before step 3 of boot; renderers pull what they missed when they hydrate).
   const events: IpcEventEmitter = { emit: (event, payload) => desktop?.emit(event, payload) ?? 0 }
 
+  // Phase 9: Peek's global shortcut (settings.peekShortcut, rebindable), its renderer signals, and
+  // quick-hide shared by every display. The window manager owns Peek itself.
+  const shortcuts = createPeekShortcuts({
+    globalShortcut,
+    target: () => desktop,
+    emit: (status) => events.emit('peek:shortcut', status),
+    log
+  })
+  peekShortcuts = shortcuts
+  const quickHide = createQuickHide({ emit: (event, payload) => events.emit(event, payload) })
+
   // Every accepted save — any window's, or main's own — reaches every window, the saver too,
   // with its new revision (optimistic concurrency; the client side is src/shared/sync-doc.ts).
   const storage = createStorage({
     dir: app.getPath('userData'),
     log,
-    onChange: (change) => events.emit('storage:changed', change)
+    onChange: (change) => {
+      events.emit('storage:changed', change)
+      // Phase 9 (and Phase 11's Settings UI): a changed peekShortcut is registered at once.
+      if (change.store === 'settings') shortcuts.applySettings(change.data)
+    }
   })
 
   registerIpcHandlers(ipcMain, {
@@ -123,6 +145,9 @@ function startPrimaryInstance(): void {
     quit: () => app.quit(),
     log
   })
+  registerPeekIpc(ipcMain, trust, { shortcuts, peeking: () => desktop?.peeking ?? false })
+  registerQuickHideIpc(ipcMain, trust, quickHide)
+  app.on('will-quit', () => shortcuts.dispose())
   // The desktop folders' items (Phase 4). The service needs the Win32 api, which exists once the
   // windows do, so it is created in the scan step; desktop:* requests wait for it.
   const desktopDirs = resolveDesktopDirs({ env: process.env, userDesktop: app.getPath('desktop') })
@@ -236,6 +261,8 @@ function startPrimaryInstance(): void {
         })
         // null: startDesktop explained why in a dialog and is quitting; no scan, no watch.
         if (desktop === null) return STOP_BOOT
+        // Phase 9: the Peek shortcut, once the app is ready and the settings are loaded.
+        shortcuts.start(storage.settings.get())
         void wallpaper?.start()
         return desktop
       },
