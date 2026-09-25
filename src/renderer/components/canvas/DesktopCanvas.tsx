@@ -22,6 +22,8 @@ import { CanvasDropZone } from '../dnd/CanvasDropZone'
 import { DndProvider } from '../dnd/DndProvider'
 import { useExternalDrop } from '../dnd/useExternalDrop'
 import { GroupWindow } from '../group/GroupWindow'
+import { toggleToolsOn } from '../tools/tools-actions'
+import { ToolsLayer } from '../tools/ToolsLayer'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { EmptyHint } from './EmptyHint'
 import { LooseIconLayer } from './LooseIconLayer'
@@ -61,6 +63,7 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
   const settings = useSettingsStore((state) => state.settings)
   const quickHidden = useUiStore((state) => state.quickHidden)
   const hintDismissed = useUiStore((state) => state.hintDismissed)
+  const toolsShown = settings.toolsEnabled && (entry?.tools.visible ?? false) // Phase 10: the menu's wording
 
   const groups = entry?.groups ?? NO_GROUPS
   const loose = entry?.loose ?? NO_LOOSE
@@ -108,6 +111,8 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
           onSettings={() => useUiStore.getState().setInspectorOpen(true)}
           onOpenSettingsPage={openSettingsPage}
           onQuit={quitApp}
+          toolsShown={toolsShown}
+          onToggleTools={() => toggleToolsOn(displayId)}
         >
           <div
             data-canvas-surface=""
@@ -139,6 +144,14 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
             hidden={quickHidden && !group.excludeFromQuickHide}
           />
         ))}
+        {/* Phase 10: the tools widget (above the groups) and the timer's completion watcher. */}
+        <ToolsLayer
+          displayId={displayId}
+          info={info}
+          area={area}
+          zIndex={stacked.length + 1}
+          hidden={quickHidden}
+        />
         <Marquee />
         {showHint && !quickHidden && (
           <EmptyHint

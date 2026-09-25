@@ -308,7 +308,7 @@ export const IPC = {
 /** `app:openExternal` opens only these URL schemes; main enforces it. */
 export const EXTERNAL_URL_PROTOCOLS = ['ms-settings:', 'https:'] as const
 
-export interface IpcRequests {
+export interface IpcRequests extends TimerRequests {
   'storage:load': { args: [store: StoreName]; result: StoreSnapshot }
   'storage:save': {
     args: [store: StoreName, request: SaveRequest<StoreFiles[StoreName]>]
@@ -366,11 +366,20 @@ export interface IpcRequests {
 
 export type RequestChannel = keyof IpcRequests
 
-/**
- * Channels later phases implement, declared so their shapes are visible now. Not exposed by the
- * preload and not handled until the owning phase adds them; that phase finalises the result types.
- */
-export interface PlannedRequests {
-  /** Phase 10 */
-  'timer:notify': { args: [linkedTaskText?: string]; result: void }
+// ---------------------------------------------------------------------------------------------
+// Phase 10: the countdown timer (src/main/app/notifications.ts)
+
+export const TIMER_IPC = { notify: 'timer:notify' } as const
+
+/** A timer reached zero: main shows the Windows notification (if Settings allow it). */
+export interface TimerNotifyRequest {
+  /** The finished countdown's `endsAt`: main shows one notification per countdown. */
+  endsAt: number
+  /** The linked task's text, when the timer was focused on one. */
+  taskText?: string
+}
+
+export interface TimerRequests {
+  /** true when a notification was shown; false when Settings turn them off or it was a repeat. */
+  'timer:notify': { args: [request: TimerNotifyRequest]; result: boolean }
 }

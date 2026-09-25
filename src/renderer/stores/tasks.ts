@@ -7,12 +7,22 @@ import {
   clearCompleted,
   removeTask,
   reorderTasks,
+  setTaskDone,
   updateTask,
   updateTimer,
   type NewTask,
   type TaskPatch
 } from '@shared/tasks-mutations'
 import { createStoreDoc, type StoreSyncOptions } from './persist'
+
+/** A task's text is one line of at most this many characters (tasks.json's limit). */
+export const TASK_TEXT_MAX = 500
+
+/** One trimmed line, cut at the limit; null when nothing is left. */
+export function cleanTaskText(text: string): string | null {
+  const line = text.replace(/\s+/g, ' ').trim().slice(0, TASK_TEXT_MAX).trim()
+  return line.length > 0 ? line : null
+}
 
 /**
  * tasks.json in the renderer. Every change is a domain primitive applied to the file as it is
@@ -37,6 +47,14 @@ export interface TasksState {
   clearCompleted(): void
   /** Field-level timer change: `update` receives the timer as it is now. */
   updateTimer(update: (timer: TimerState) => TimerState): void
+  // ---- Phase 10: the to-do list's actions (built on the primitives above) --------------------
+
+  /** Adds a task at the end of the list; returns its id, or null when the text is blank. */
+  add(text: string): string | null
+  /** Changes a task's text; blank text changes nothing. */
+  edit(id: string, text: string): void
+  /** Checks or unchecks a task; unchecked, it goes to the bottom of the active list. */
+  toggle(id: string): void
   /** Forgets main's data, the revision and unsaved changes; back to unhydrated (tests). */
   reset(): void
 }
@@ -44,7 +62,7 @@ export interface TasksState {
 export function createTasksStore(
   options: StoreSyncOptions<'tasks'> = {}
 ): UseBoundStore<StoreApi<TasksState>> {
-  return create<TasksState>()((set) => {
+  return create<TasksState>()((set, get) => {
     const doc = createStoreDoc(
       'tasks',
       emptyTasks,
@@ -87,6 +105,28 @@ export function createTasksStore(
 
       updateTimer(update) {
         doc.current.mutate((file) => updateTimer(file, update))
+      },
+
+      add(text) {
+        const line = cleanTaskText(text)
+        if (line === null) return null
+        const id = crypto.randomUUID()
+        get().addTask({ id, text: line, done: false, createdAt: Date.now() })
+        return id
+      },
+
+      edit(id, text) {
+        const line = cleanTaskText(text)
+        if (line !== null) get().updateTask(id, { text: line })
+      },
+
+      toggle(id) {
+        const task = get().tasks.find((entry) => entry.id === id)
+        if (!task) return
+        // The wanted state is captured now; setTaskDone is a no-op if it is already so.
+        const done = !task.done
+        const now = Date.now()
+        doc.current.mutate((file) => setTaskDone(file, id, done, now))
       },
 
       reset() {

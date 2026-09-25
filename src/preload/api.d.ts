@@ -17,6 +17,7 @@ import type {
   StoreName,
   StoreSnapshot,
   ThemeInfo,
+  TimerNotifyRequest,
   WallpaperInfo
 } from '@shared/ipc'
 
@@ -111,6 +112,15 @@ export interface TaskyardApi {
   wallpaper: {
     /** What this display's wallpaper layer paints; refetch on `wallpaper:changed`. */
     get(displayId: number): Promise<WallpaperInfo | null>
+  }
+
+  /** Phase 10: the countdown timer. */
+  timer: {
+    /**
+     * A countdown reached zero: main shows the Windows notification unless Settings turn it off;
+     * one per countdown (`endsAt`). Resolves true when one was shown.
+     */
+    notify(request: TimerNotifyRequest): Promise<boolean>
   }
 
   /** Subscribes to a main → renderer event; returns the unsubscribe. */

@@ -24,6 +24,7 @@ import {
   DesktopPointerSensor,
   KEYBOARD_CODES
 } from './sensors'
+import { routeAnnouncements, routeDragEvents } from './drag-routing'
 import { useDragOut } from './useDragOut'
 import { useItemDrop } from './useItemDrop'
 
@@ -55,7 +56,7 @@ function announcements(displayId: number): Announcements {
       ?.groups.find((entry) => entry.id === data.groupId)
     return `group ${group?.title ?? ''}`.trim()
   }
-  return {
+  const icons: Announcements = {
     onDragStart: ({ active }) => `Picked up ${moving(active.id)}.`,
     onDragOver: ({ active, over }) =>
       over
@@ -67,6 +68,8 @@ function announcements(displayId: number): Announcements {
         : `${moving(active.id)} was not moved.`,
     onDragCancel: ({ active }) => `Moving ${moving(active.id)} was cancelled.`
   }
+  // Phase 10: to-do rows are named by their text (drag-routing.ts).
+  return routeAnnouncements(icons)
 }
 
 /**
@@ -88,7 +91,9 @@ export function DndProvider({
     }),
     useSensor(DesktopKeyboardSensor, { keyboardCodes: KEYBOARD_CODES })
   )
-  const handlers = useItemDrop({ displayId, area, cell })
+  const itemHandlers = useItemDrop({ displayId, area, cell })
+  // Phase 10: to-do rows are sortables in this same context; their drags are routed apart.
+  const handlers = useMemo(() => routeDragEvents(itemHandlers), [itemHandlers])
   useDragOut()
   // A drag cut short by an unmount (the display went away) must not keep listening on the
   // document: its release would still drop, from a canvas that no longer exists.

@@ -62,6 +62,16 @@ describe('ensureDisplay', () => {
 
     expect(ensureDisplay(start, { id: 1, bounds: { ...PRIMARY } })).toBe(start)
   })
+
+  it("a new display's tools widget starts from the given placement; a known one keeps its own", () => {
+    const tools = { visible: false, x: 1576, y: 24 }
+
+    const added = ensureDisplay(emptyLayout(), { id: 2, bounds: SECONDARY, tools })
+    expect(added.displays[0].tools).toEqual({ ...newDisplayLayout(2, SECONDARY).tools, ...tools })
+
+    const start = layout()
+    expect(ensureDisplay(start, { id: 1, bounds: { ...PRIMARY }, tools })).toBe(start)
+  })
 })
 
 describe('putGroup', () => {

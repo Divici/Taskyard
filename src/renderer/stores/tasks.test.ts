@@ -161,3 +161,83 @@ describe('tasks store', () => {
     expect(bridge.storage.save).not.toHaveBeenCalled()
   })
 })
+
+describe('tasks store: to-do actions (Phase 10)', () => {
+  function hydrated(start: TasksFile = emptyTasks()): {
+    main: FakeMain<TasksFile>
+    store: ReturnType<typeof createTasksStore>
+  } {
+    const { main, a } = twoWindows(start)
+    return { main, store: a }
+  }
+
+  it('add trims the text, stamps id and createdAt, and persists', async () => {
+    const { main, store } = hydrated()
+    vi.spyOn(Date, 'now').mockReturnValue(42)
+
+    const id = store.getState().add('  Buy milk  ')
+    await main.settle()
+
+    expect(id).toEqual(expect.any(String))
+    expect(main.data.tasks).toEqual([
+      { id, text: 'Buy milk', done: false, order: 0, createdAt: 42 }
+    ])
+  })
+
+  it('add refuses blank text and cuts text at 500 characters', async () => {
+    const { main, store } = hydrated()
+
+    expect(store.getState().add('   ')).toBeNull()
+    store.getState().add('x'.repeat(600))
+    await main.settle()
+
+    expect(main.data.tasks).toHaveLength(1)
+    expect(main.data.tasks[0].text).toHaveLength(500)
+  })
+
+  it('edit changes only the text; blank text changes nothing', async () => {
+    const { main, store } = hydrated({ ...emptyTasks(), tasks: [task] })
+
+    store.getState().edit('t-1', '  Water the ferns ')
+    store.getState().edit('t-1', '   ')
+    await main.settle()
+
+    expect(main.data.tasks).toEqual([{ ...task, text: 'Water the ferns' }])
+  })
+
+  it('toggle completes a task, and unchecking returns it to the bottom of the active list', async () => {
+    const tasks = ['a', 'b', 'c'].map((id, order) => ({ ...task, id, order }))
+    const { main, store } = hydrated({ ...emptyTasks(), tasks })
+    vi.spyOn(Date, 'now').mockReturnValue(77)
+
+    store.getState().toggle('a')
+    await main.settle()
+    expect(main.data.tasks[0]).toMatchObject({ id: 'a', done: true, completedAt: 77 })
+
+    store.getState().toggle('a')
+    await main.settle()
+    const a = main.data.tasks.find((t) => t.id === 'a')
+    expect(a).toMatchObject({ done: false, order: 3 })
+    expect(a).not.toHaveProperty('completedAt')
+  })
+
+  it('reordering the active tasks is stable: done tasks and unlisted tasks keep their relative order', async () => {
+    const tasks = [
+      { ...task, id: 'a', order: 0 },
+      { ...task, id: 'done', order: 1, done: true, completedAt: 3 },
+      { ...task, id: 'b', order: 2 },
+      { ...task, id: 'c', order: 3 }
+    ]
+    const { main, store } = hydrated({ ...emptyTasks(), tasks })
+
+    store.getState().reorderTasks(['c', 'a', 'b'])
+    await main.settle()
+
+    expect(main.data.tasks.map((t) => [t.id, t.order])).toEqual([
+      ['c', 0],
+      ['a', 1],
+      ['b', 2],
+      ['done', 3]
+    ])
+  })
+})

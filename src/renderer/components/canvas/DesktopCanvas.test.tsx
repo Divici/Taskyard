@@ -87,6 +87,7 @@ describe('DesktopCanvas', () => {
       'New group here',
       'Auto-organize…',
       'Sort loose icons',
+      'Hide tools widget',
       'Refresh desktop',
       'Settings',
       'Display settings',

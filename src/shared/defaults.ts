@@ -82,7 +82,20 @@ export function emptyJournal(): OpsJournalFile {
   return { version: SCHEMA_VERSION, ops: [] }
 }
 
-/** A display seen for the first time: no groups, no loose items, the default tools widget. */
-export function newDisplayLayout(displayId: number, bounds: Rect): DisplayLayout {
-  return { displayId, bounds: { ...bounds }, groups: [], loose: {}, tools: { ...TOOLS_VALUES } }
+/**
+ * A display seen for the first time: no groups, no loose items, the default tools widget with
+ * `tools` over it (Phase 10: where it starts and whether it shows there).
+ */
+export function newDisplayLayout(
+  displayId: number,
+  bounds: Rect,
+  tools: Partial<ToolsState> = {}
+): DisplayLayout {
+  return {
+    displayId,
+    bounds: { ...bounds },
+    groups: [],
+    loose: {},
+    tools: { ...TOOLS_VALUES, ...tools }
+  }
 }

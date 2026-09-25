@@ -4,6 +4,7 @@ import type { TaskyardApi } from '../../preload/api'
 import { useDisplayStore, type DisplayState } from '../stores/display'
 import { useLayoutStore, type LayoutState } from '../stores/layout'
 import { parseDisplayId } from './display-id'
+import { initialToolsPlacement } from './tools-placement'
 
 export interface DisplaySyncTargets {
   display: Pick<StoreApi<DisplayState>, 'getState'>
@@ -38,7 +39,12 @@ export function connectDisplay(
 
   const apply = (info: DisplayInfo): void => {
     display().receiveInfo(info)
-    targets.layout.getState().ensureDisplay({ id: info.id, bounds: info.bounds })
+    targets.layout.getState().ensureDisplay({
+      id: info.id,
+      bounds: info.bounds,
+      // Phase 10: only used if this display has no layout entry yet.
+      tools: initialToolsPlacement(info)
+    })
   }
 
   const unsubscribers = [

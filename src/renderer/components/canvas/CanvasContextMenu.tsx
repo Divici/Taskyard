@@ -20,14 +20,18 @@ export interface CanvasContextMenuProps {
   onSettings(): void
   onOpenSettingsPage(url: string): void
   onQuit(): void
+  /** Phase 10: whether the tools widget shows on this display (the item's wording). */
+  toolsShown?: boolean
+  /** Phase 10: "Show/Hide tools widget" (R9). */
+  onToggleTools?(): void
   /** The canvas surface (the trigger). */
   children: React.ReactElement
 }
 
 /**
  * The desktop's right-click menu: New group here · Auto-organize… · Sort loose icons · Refresh
- * desktop · Settings · Display settings · Personalize · Quit. (Phase 10 adds Show/Hide tools
- * widget.)
+ * desktop · Settings · Display settings · Personalize · Quit, plus Show/Hide tools widget after
+ * Sort loose icons (Phase 10).
  */
 export function CanvasContextMenu({
   onNewGroup,
@@ -37,6 +41,8 @@ export function CanvasContextMenu({
   onSettings,
   onOpenSettingsPage,
   onQuit,
+  toolsShown = false,
+  onToggleTools,
   children
 }: CanvasContextMenuProps): React.JSX.Element {
   const clickedAt = useRef<Point>({ x: 0, y: 0 })
@@ -64,6 +70,11 @@ export function CanvasContextMenu({
         <ContextMenuItem className={MENU_ITEM} onSelect={onSortLoose}>
           Sort loose icons
         </ContextMenuItem>
+        {onToggleTools && (
+          <ContextMenuItem className={MENU_ITEM} onSelect={onToggleTools}>
+            {toolsShown ? 'Hide tools widget' : 'Show tools widget'}
+          </ContextMenuItem>
+        )}
         <ContextMenuSeparator className={MENU_SEPARATOR} />
         <ContextMenuItem className={MENU_ITEM} onSelect={onRefresh}>
           Refresh desktop

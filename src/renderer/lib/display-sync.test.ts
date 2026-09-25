@@ -76,7 +76,21 @@ describe('connectDisplay', () => {
 
     expect(ensureDisplay).toHaveBeenCalledExactlyOnceWith({
       id: SECONDARY.id,
-      bounds: SECONDARY.bounds
+      bounds: SECONDARY.bounds,
+      tools: { visible: false, x: 1576, y: 24 }
+    })
+  })
+
+  it('a new layout entry shows the tools widget on the primary display only, top-right of its work area', async () => {
+    const { ensureDisplay, targets } = spied()
+
+    connectDisplay(bridge(), search(PRIMARY.id), targets)
+    await flush()
+
+    expect(ensureDisplay).toHaveBeenCalledExactlyOnceWith({
+      id: PRIMARY.id,
+      bounds: PRIMARY.bounds,
+      tools: { visible: true, x: 2216, y: 24 }
     })
   })
 
@@ -90,7 +104,11 @@ describe('connectDisplay', () => {
     api.emit('display:changed', rescaled)
 
     expect(display.getState().info).toEqual(rescaled)
-    expect(ensureDisplay).toHaveBeenLastCalledWith({ id: SECONDARY.id, bounds: rescaled.bounds })
+    expect(ensureDisplay).toHaveBeenLastCalledWith({
+      id: SECONDARY.id,
+      bounds: rescaled.bounds,
+      tools: { visible: false, x: 1576, y: 24 }
+    })
   })
 
   it('ignores a display:changed about another display', async () => {
@@ -131,10 +149,9 @@ describe('connectDisplay', () => {
     await flush()
 
     expect(display.getState().info).toEqual(moved)
-    expect(ensureDisplay).toHaveBeenCalledExactlyOnceWith({
-      id: SECONDARY.id,
-      bounds: moved.bounds
-    })
+    expect(ensureDisplay).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ id: SECONDARY.id, bounds: moved.bounds })
+    )
   })
 
   it('never registers the display in reaction to layout changes (its own save is echoed back)', async () => {

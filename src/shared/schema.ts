@@ -123,6 +123,8 @@ export const TimerStateSchema = z
     endsAt: z.number().int().nonnegative().optional(),
     remainingMs: z.number().int().nonnegative().optional(),
     linkedTaskId: z.string().min(1).optional(),
+    /** Phase 10: it ended while Taskyard was closed (the widget says so instead of chiming). */
+    finishedAway: z.boolean().optional(),
     presetsMs: z
       .array(z.number().int().positive().max(MAX_TIMER_MS))
       .default(() => [...TIMER_PRESETS_MS])

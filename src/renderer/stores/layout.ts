@@ -55,8 +55,11 @@ export interface LayoutState {
   hydrated: boolean
   /** Main's layout at a revision: the loaded file or a `storage:changed` event. Never saves. */
   receive(snapshot: StoreSnapshot<'layout'>): void
-  /** Makes sure the display has an entry, refreshing its last known bounds. */
-  ensureDisplay(display: { id: number; bounds: Rect }): void
+  /**
+   * Makes sure the display has an entry, refreshing its last known bounds; `tools` is the tools
+   * widget's start (placement, visibility) for a display seen for the first time.
+   */
+  ensureDisplay(display: { id: number; bounds: Rect; tools?: Partial<ToolsState> }): void
   /**
    * Low-level create: puts a new `group` on the display. Returns false, changing nothing, when
    * the display has no entry or the group id already exists. Phase 7's `createGroup` builds on
@@ -195,7 +198,11 @@ export function createLayoutStore(
       },
 
       ensureDisplay(display) {
-        const entry = { id: display.id, bounds: { ...display.bounds } }
+        const entry = {
+          id: display.id,
+          bounds: { ...display.bounds },
+          ...(display.tools ? { tools: { ...display.tools } } : {})
+        }
         doc.current.mutate((layout) => ensureDisplay(layout, entry))
       },
 

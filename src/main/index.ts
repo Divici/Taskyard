@@ -9,6 +9,7 @@ import {
   Menu,
   nativeImage,
   nativeTheme,
+  Notification,
   powerMonitor,
   protocol,
   screen,
@@ -25,6 +26,7 @@ import { createQuickHide, registerQuickHideIpc } from './app/quick-hide'
 import { createPeekShortcuts, registerPeekIpc, type PeekShortcuts } from './app/shortcuts'
 import { acquireSingleInstanceLock } from './app/single-instance'
 import { startDesktop } from './app/start-desktop'
+import { createTimerNotifier, registerTimerIpc } from './app/notifications'
 import { createThemeService, registerThemeIpc, type ThemeService } from './app/theme-service'
 import { registerDesktopIpc } from './desktop/desktop-ipc'
 import { cursorOverOtherWindow, registerDragOutIpc } from './desktop/dnd-ipc'
@@ -193,6 +195,18 @@ function startPrimaryInstance(): void {
     }
   }
 
+  // Phase 10: a finished countdown's Windows notification (Settings › timerNotify, read when the
+  // timer ends). The tray's tools toggle and timer tooltip live in app/tools-control.ts.
+  registerTimerIpc(
+    ipcMain,
+    createTimerNotifier({
+      settings: () => storage.settings.get(),
+      createNotification: (options) => new Notification(options),
+      isSupported: () => Notification.isSupported(),
+      log
+    }),
+    trust
+  )
   // Phase 6: the wallpaper layer and the theme. The wallpaper service needs Win32 and the screen
   // (both after ready), so wallpaper:get requests wait for it; the theme needs nativeTheme.
   let wallpaper: WallpaperService | null = null

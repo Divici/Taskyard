@@ -1,4 +1,4 @@
-import { IPC, isEventChannel, type IpcEventName, type IpcEvents } from '@shared/ipc'
+import { IPC, isEventChannel, TIMER_IPC, type IpcEventName, type IpcEvents } from '@shared/ipc'
 import type { TaskyardApi } from './api'
 
 /** The slice of Electron's `ipcRenderer` the bridge uses (injectable for tests). */
@@ -83,6 +83,10 @@ export function createTaskyardApi(
 
     wallpaper: {
       get: (displayId) => invoke(IPC.wallpaper.get, displayId)
+    },
+
+    timer: {
+      notify: (request) => invoke(TIMER_IPC.notify, request)
     },
 
     on<E extends IpcEventName>(event: E, listener: (payload: IpcEvents[E]) => void): () => void {

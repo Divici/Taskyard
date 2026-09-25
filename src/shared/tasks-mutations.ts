@@ -57,6 +57,19 @@ export function updateTask(file: TasksFile, id: string, patch: TaskPatch): Tasks
   return { ...file, tasks: file.tasks.map((task, i) => (i === index ? next : task)) }
 }
 
+/**
+ * Checks or unchecks a task. Completing stamps `completedAt` (the task keeps its `order`);
+ * unchecking removes it and moves the task after every other one, i.e. to the bottom of the
+ * active list. A no-op when the task is gone or already in that state.
+ */
+export function setTaskDone(file: TasksFile, id: string, done: boolean, now: number): TasksFile {
+  const current = file.tasks.find((task) => task.id === id)
+  if (!current || current.done === done) return file
+  if (done) return updateTask(file, id, { done: true, completedAt: now })
+  const order = file.tasks.reduce((max, task) => Math.max(max, task.order), -1) + 1
+  return updateTask(file, id, { done: false, completedAt: undefined, order })
+}
+
 /** Removes one task, and unlinks the timer if it was focused on it. */
 export function removeTask(file: TasksFile, id: string): TasksFile {
   return removeTasks(file, new Set([id]))

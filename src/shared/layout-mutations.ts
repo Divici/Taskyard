@@ -36,15 +36,18 @@ export function hasDisplay(layout: LayoutFile, displayId: number): boolean {
   return layout.displays.some((display) => display.displayId === displayId)
 }
 
-/** Adds an entry for the display, or refreshes its last known bounds. */
+/**
+ * Adds an entry for the display, or refreshes its last known bounds. `tools` (Phase 10) is where
+ * a *new* entry's tools widget starts and whether it shows; a known display keeps its own.
+ */
 export function ensureDisplay(
   layout: LayoutFile,
-  display: { id: number; bounds: Rect }
+  display: { id: number; bounds: Rect; tools?: Partial<ToolsState> }
 ): LayoutFile {
   if (!hasDisplay(layout, display.id)) {
     return {
       ...layout,
-      displays: [...layout.displays, newDisplayLayout(display.id, display.bounds)]
+      displays: [...layout.displays, newDisplayLayout(display.id, display.bounds, display.tools)]
     }
   }
   return updateDisplay(layout, display.id, (entry) =>

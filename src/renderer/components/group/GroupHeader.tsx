@@ -14,9 +14,12 @@ export interface GroupHeaderProps {
   onToggleRollUp(): void
   /** Opens the group's menu (the "…" button). */
   onOpenMenu(anchor: DOMRect): void
-  onRename(): void
-  onRenameCommit(title: string): void
-  onRenameCancel(): void
+  /** The "…" button's accessible name (Phase 10: "Tools options"). */
+  menuLabel?: string
+  /** F2 renames; absent for a title that cannot be renamed (the tools widget's tool name). */
+  onRename?(): void
+  onRenameCommit?(title: string): void
+  onRenameCancel?(): void
   /** Extra content before the buttons (Phase 10: the timer's remaining time). */
   children?: React.ReactNode
 }
@@ -37,6 +40,7 @@ export function GroupHeader({
   dragging = false,
   onToggleRollUp,
   onOpenMenu,
+  menuLabel = 'Group options',
   onRename,
   onRenameCommit,
   onRenameCancel,
@@ -50,7 +54,7 @@ export function GroupHeader({
         onToggleRollUp()
       }}
       onKeyDown={(event) => {
-        if (event.key === 'F2' && !renaming) {
+        if (event.key === 'F2' && !renaming && onRename) {
           event.preventDefault()
           onRename()
         }
@@ -62,7 +66,7 @@ export function GroupHeader({
         drag && (dragging ? 'cursor-grabbing' : 'cursor-grab')
       )}
     >
-      {renaming ? (
+      {renaming && onRenameCommit && onRenameCancel ? (
         <RenameInline
           value={title}
           label={`Rename group ${title}`}
@@ -95,7 +99,7 @@ export function GroupHeader({
       </button>
       <button
         type="button"
-        aria-label="Group options"
+        aria-label={menuLabel}
         aria-haspopup="menu"
         onClick={(event) => onOpenMenu(event.currentTarget.getBoundingClientRect())}
         className={ICON_BUTTON}

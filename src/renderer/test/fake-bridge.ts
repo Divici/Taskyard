@@ -45,6 +45,7 @@ export interface FakeBridge extends TaskyardApi {
   peek: { [K in keyof Api['peek']]: Mocked<Api['peek'][K]> }
   quickHide: { [K in keyof Api['quickHide']]: Mocked<Api['quickHide'][K]> }
   wallpaper: { get: Mocked<Api['wallpaper']['get']> }
+  timer: { notify: Mocked<Api['timer']['notify']> }
   on: Mocked<Api['on']>
   emit<E extends IpcEventName>(event: E, payload: IpcEvents[E]): void
   listenerCount(event: IpcEventName): number
@@ -187,6 +188,9 @@ export function createFakeBridge(options: FakeBridgeOptions = {}): FakeBridge {
       get: vi.fn(async (displayId: number) =>
         displayId === FAKE_WALLPAPER.displayId ? structuredClone(FAKE_WALLPAPER) : null
       ) as FakeBridge['wallpaper']['get']
+    },
+    timer: {
+      notify: vi.fn(async () => true) as FakeBridge['timer']['notify']
     },
     on: on as unknown as FakeBridge['on'],
     emit(event, payload) {

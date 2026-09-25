@@ -6,6 +6,7 @@ import {
   clearCompleted,
   removeTask,
   reorderTasks,
+  setTaskDone,
   updateTask,
   updateTimer
 } from './tasks-mutations'
@@ -143,5 +144,35 @@ describe('updateTimer', () => {
     const start = file()
 
     expect(updateTimer(start, (timer) => timer)).toBe(start)
+  })
+})
+
+describe('setTaskDone', () => {
+  it('completing stamps completedAt; the task keeps its order', () => {
+    const start = file(task('a', { order: 0 }), task('b', { order: 1 }))
+
+    const result = setTaskDone(start, 'a', true, 50)
+
+    expect(result.tasks[0]).toEqual(task('a', { order: 0, done: true, completedAt: 50 }))
+    expect(setTaskDone(result, 'a', true, 99)).toBe(result)
+  })
+
+  it('unchecking returns the task to the bottom of the active list', () => {
+    const start = file(
+      task('a', { order: 0, done: true, completedAt: 5 }),
+      task('b', { order: 1 }),
+      task('c', { order: 2 })
+    )
+
+    const result = setTaskDone(start, 'a', false, 60)
+
+    expect(result.tasks[0]).toEqual(task('a', { order: 3 }))
+    expect(result.tasks[0]).not.toHaveProperty('completedAt')
+    expect(setTaskDone(result, 'a', false, 70)).toBe(result)
+  })
+
+  it('is a no-op for a task that is gone', () => {
+    const start = file(task('a'))
+    expect(setTaskDone(start, 'missing', true, 1)).toBe(start)
   })
 })

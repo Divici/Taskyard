@@ -147,7 +147,7 @@ describe('IconContextMenu', () => {
     bridge.desktop.rename.mockResolvedValueOnce({ ok: true, path: 'C:\\x\\Plan 2.txt' })
     await user.keyboard('{End} 2{Enter}')
     expect(bridge.desktop.rename).toHaveBeenLastCalledWith('1:1', 'Plan 2.txt')
-    await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: /^Rename / })).toBeNull())
   })
 
   it('a rename Windows refuses (EPERM) closes the field and shows a toast', async () => {
@@ -164,7 +164,7 @@ describe('IconContextMenu', () => {
     expect(
       await screen.findByText('“Notes.txt” can’t be changed: Windows denied access.')
     ).toBeInTheDocument()
-    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('textbox', { name: /^Rename / })).toBeNull()
   })
 
   it('Delete asks first (listing the names), then sends the item to the Recycle Bin', async () => {
@@ -204,7 +204,7 @@ describe('IconContextMenu', () => {
     expect(menuItem(menu, 'Open')).not.toHaveAttribute('aria-disabled')
 
     await user.click(menuItem(menu, /Rename/))
-    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.queryByRole('textbox', { name: /^Rename / })).toBeNull()
     await user.click(menuItem(await openMenu('Shared'), /Copy path/))
     await waitFor(async () =>
       expect(await navigator.clipboard.readText()).toBe('C:\\Users\\Public\\Desktop\\Shared.txt')
