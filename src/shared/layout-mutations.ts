@@ -335,3 +335,25 @@ export function moveGroupToDisplay(
     })
   }
 }
+
+/** True when the layout places `id` anywhere or remembers its path. */
+function knowsItem(layout: LayoutFile, id: string): boolean {
+  return (
+    id in layout.paths ||
+    layout.displays.some(
+      (display) => id in display.loose || display.groups.some((group) => group.items.includes(id))
+    )
+  )
+}
+
+/**
+ * A file was renamed (Taskyard's rename, or Explorer's seen by the watcher): its placement stays
+ * because the id is unchanged, and only the top-level `paths[id]` follows. Main applies this
+ * through its own layout store (so the revision bumps and every window gets storage:changed);
+ * renderers never write paths on rename. Same object back for the same path, or for an id the
+ * layout neither places nor remembers (reconcile records it when it places the item).
+ */
+export function renamePath(layout: LayoutFile, id: string, path: string): LayoutFile {
+  if (layout.paths[id] === path || !knowsItem(layout, id)) return layout
+  return { ...layout, paths: { ...layout.paths, [id]: path } }
+}

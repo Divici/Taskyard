@@ -1,5 +1,6 @@
 import { vi, type Mock } from 'vitest'
 import { defaultSettings, emptyLayout, emptyTasks } from '@shared/defaults'
+import type { DesktopItem } from '@shared/schema'
 import type {
   DisplayInfo,
   IpcEventName,
@@ -36,6 +37,7 @@ export interface FakeBridge extends TaskyardApi {
     get: Mocked<Api['display']['get']>
     list: Mocked<Api['display']['list']>
   }
+  desktop: { [K in keyof Api['desktop']]: Mocked<Api['desktop'][K]> }
   on: Mocked<Api['on']>
   emit<E extends IpcEventName>(event: E, payload: IpcEvents[E]): void
   listenerCount(event: IpcEventName): number
@@ -47,6 +49,8 @@ export interface FakeBridgeOptions {
   /** Starting revision per store (1 when omitted). */
   revisions?: Partial<Record<StoreName, number>>
   status?: StorageStatus
+  /** What `desktop.list` answers (empty when omitted). */
+  items?: DesktopItem[]
 }
 
 const PRIMARY: DisplayInfo = {
@@ -114,6 +118,16 @@ export function createFakeBridge(options: FakeBridgeOptions = {}): FakeBridge {
       get: vi.fn(async () => PRIMARY) as FakeBridge['display']['get'],
       list: vi.fn(async () => [PRIMARY]) as FakeBridge['display']['list']
     },
+    desktop: {
+      list: vi.fn(async () => structuredClone(options.items ?? [])),
+      open: vi.fn(async () => ({ ok: true as const })),
+      showInFolder: vi.fn(async () => ({ ok: true as const })),
+      rename: vi.fn(async () => ({ ok: true as const, path: '' })),
+      trash: vi.fn(async () => ({ ok: true as const })),
+      moveToDesktop: vi.fn(async () => ({ moves: [] })),
+      undoMove: vi.fn(async () => ({ ok: true as const, path: '' })),
+      rescan: vi.fn(async () => {})
+    } as unknown as FakeBridge['desktop'],
     on: on as unknown as FakeBridge['on'],
     emit(event, payload) {
       for (const listener of listeners.get(event) ?? []) (listener as (p: unknown) => void)(payload)

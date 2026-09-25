@@ -39,6 +39,17 @@ export function createTaskyardApi(
       list: () => invoke(IPC.display.list)
     },
 
+    desktop: {
+      list: () => invoke(IPC.desktop.list),
+      open: (id) => invoke(IPC.desktop.open, id),
+      showInFolder: (id) => invoke(IPC.desktop.showInFolder, id),
+      rename: (id, newName) => invoke(IPC.desktop.rename, id, newName),
+      trash: (id) => invoke(IPC.desktop.trash, id),
+      moveToDesktop: (paths) => invoke(IPC.desktop.moveToDesktop, paths),
+      undoMove: (token) => invoke(IPC.desktop.undoMove, token),
+      rescan: () => invoke(IPC.desktop.rescan)
+    },
+
     on<E extends IpcEventName>(event: E, listener: (payload: IpcEvents[E]) => void): () => void {
       if (!isEventChannel(event)) throw new Error(`taskyard.on: unknown event "${String(event)}"`)
       if (typeof listener !== 'function')

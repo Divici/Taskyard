@@ -9,7 +9,12 @@ export const ENV = {
   /** One of electron-log's levels; anything else falls back to `info`. */
   logLevel: 'TASKYARD_LOG_LEVEL',
   /** `1` = use the in-memory Win32 fake instead of koffi (no z-order seating). */
-  noWin32: 'TASKYARD_NO_WIN32'
+  noWin32: 'TASKYARD_NO_WIN32',
+  /**
+   * Semicolon list replacing the scanned desktop folders (first = the user Desktop, where moves
+   * land). Tests and e2e runs point it at temp folders so nothing touches the real desktop.
+   */
+  desktopDirs: 'TASKYARD_DESKTOP_DIRS'
 } as const
 
 type Env = Partial<Record<string, string | undefined>>

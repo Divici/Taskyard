@@ -36,6 +36,8 @@ export interface QuitPathDeps {
   desktop: () => QuittableDesktop | null
   log: QuitFlushLog & { warn(message: string): void }
   flushTimeoutMs?: number
+  /** Stops the desktop file watcher (Phase 4) at will-quit. */
+  stopWatching?: () => void | Promise<void>
 }
 
 /**
@@ -49,7 +51,8 @@ export interface QuitPathDeps {
  *    this one that holds the quit; Electron reports it in `defaultPrevented`, checked once the
  *    event is over, and the desktop windows are guarded again (`cancelQuit`).
  * 3. will-quit writes any change accepted after the last before-quit (still in its debounce)
- *    synchronously, then disposes the desktop windows' timers and hooks.
+ *    synchronously, stops the desktop file watcher, then disposes the desktop windows' timers
+ *    and hooks.
  * 4. window-all-closed quits only when nothing is left to recreate a window.
  * 5. Windows log-off/shutdown sends no before-quit: each window's session-end flushes
  *    synchronously instead.
@@ -61,6 +64,17 @@ export function installQuitPath(app: QuitPathApp, deps: QuitPathDeps): void {
   const disarm = (): void => {
     if (heldCheck !== null) clearTimeout(heldCheck)
     heldCheck = null
+  }
+
+  const stopWatching = (): void => {
+    if (!deps.stopWatching) return
+    const failed = (error: unknown): void =>
+      log.error('quit: stopping the desktop watcher failed', error)
+    try {
+      void Promise.resolve(deps.stopWatching()).catch(failed)
+    } catch (error) {
+      failed(error)
+    }
   }
 
   // Registered first, so the listener below can see whether the flush held the quit.
@@ -100,6 +114,7 @@ export function installQuitPath(app: QuitPathApp, deps: QuitPathDeps): void {
         log.error('quit: writing late changes at will-quit failed', error)
       }
     }
+    stopWatching()
     deps.desktop()?.dispose()
   })
 

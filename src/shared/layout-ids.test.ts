@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { newDisplayLayout } from './defaults'
-import { forgetItemIds } from './layout-ids'
+import { forgetItemIds, replaceItemId } from './layout-ids'
 import type { Group, LayoutFile } from './schema'
 
 function group(id: string, items: string[]): Group {
@@ -58,5 +58,29 @@ describe('forgetItemIds', () => {
 
     expect(forgetItemIds(input, ['9:9'])).toBe(input)
     expect(forgetItemIds(input, [])).toBe(input)
+  })
+})
+
+describe('replaceItemId (a path that now holds a new file, e.g. an atomic save)', () => {
+  it('moves group membership, loose position and path to the new id, and drops lastSeen', () => {
+    const result = replaceItemId(layout(), '1:2', '7:7')
+
+    expect(result.displays[0].groups[0].items).toEqual(['1:1', '7:7'])
+    expect(result.displays[1].loose).toEqual({ '7:7': { x: 8, y: 8 }, '1:4': { x: 96, y: 8 } })
+    expect(result.paths['7:7']).toBe('C:\\b')
+    expect(result.paths['1:2']).toBeUndefined()
+    expect(result.lastSeen).toEqual({ '1:4': 6 })
+  })
+
+  it('returns the same object when the old id is unknown or the ids are equal', () => {
+    const input = layout()
+    expect(replaceItemId(input, '9:9', '7:7')).toBe(input)
+    expect(replaceItemId(input, '1:2', '1:2')).toBe(input)
+  })
+
+  it('keeps the new id once when it was already placed (no duplicates)', () => {
+    const result = replaceItemId(layout(), '1:1', '1:3')
+
+    expect(result.displays[0].groups.map((g) => g.items)).toEqual([['1:3', '1:2'], []])
   })
 })

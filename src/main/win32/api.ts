@@ -84,6 +84,22 @@ export interface Win32Api {
   visibleWindowsBetween(upper: Hwnd, lower: Hwnd): Hwnd[]
   /** `GetFileAttributesW` on the `\\?\` form of `path`; null when the path cannot be read. */
   getFileAttributes(path: string): number | null
+  /**
+   * Whether this user may add and delete entries in `dir`: opens it with
+   * `FILE_ADD_FILE | FILE_DELETE_CHILD` (an ACL access check, no side effects) and closes it.
+   * Node's `fs.access(W_OK)` ignores ACLs on Windows, so it cannot tell that a standard user may
+   * not change the Public Desktop. False when the folder is missing too.
+   */
+  canModifyFolder(dir: string): boolean
+  /**
+   * Renames or moves `from` to `to` (`MoveFileExW` without `MOVEFILE_REPLACE_EXISTING` or
+   * `MOVEFILE_COPY_ALLOWED`): never replaces an existing file, never copies. A case-only rename
+   * of the same file is allowed. Throws an Error with a Node-style `code` (`EEXIST`, `EXDEV`,
+   * `EPERM`, `EBUSY`, `ENOENT`, `ENAMETOOLONG`, `EINVAL`, else `EIO`) and the Win32 `errno`.
+   */
+  moveFile(from: string, to: string): void
+  /** Sets or clears `FILE_ATTRIBUTE_HIDDEN`, keeping the other attributes; false on failure. */
+  setHidden(path: string, hidden: boolean): boolean
   /** A `REG_SZ`/`REG_EXPAND_SZ` (expanded) value, or null when the key or value is missing. */
   regGetString(hive: RegistryHive, key: string, value: string): string | null
   /** The wallpaper Windows paints on the monitor at `rectPx`. Implemented in Phase 6. */

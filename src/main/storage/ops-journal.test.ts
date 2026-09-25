@@ -1,6 +1,7 @@
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -17,7 +18,7 @@ import { boot } from '../app/boot'
 import { JsonStore } from './json-store'
 import { replayJournal } from './journal-replay'
 import { LAYOUT_MIGRATIONS } from './migrations'
-import { JournalReadOnlyError, OpsJournal } from './ops-journal'
+import { JournalReadOnlyError, OpsJournal, partialPathFor } from './ops-journal'
 
 let root: string
 let journalPath: string
@@ -74,6 +75,26 @@ async function crashedAfterCopy(
   const journal = createJournal()
   await journal.load()
   return { token: op.token, journal }
+}
+
+/**
+ * A move that journaled its verified copy (`copied`, toId = the copy's id) and died before
+ * renaming it from its partial name into `to`.
+ */
+async function crashedBeforeRename(
+  from: string,
+  to: string
+): Promise<{ token: string; toId: string; journal: OpsJournal }> {
+  const before = createJournal()
+  await before.load()
+  const op = before.begin({ from, to })
+  writeFileSync(partialPathFor(op), readFileSync(from))
+  const toId = fileIdOf(partialPathFor(op))
+  before.advance(op.token, 'copied', { toId })
+
+  const journal = createJournal()
+  await journal.load()
+  return { token: op.token, toId, journal }
 }
 
 describe('OpsJournal', () => {
@@ -138,21 +159,20 @@ describe('OpsJournal', () => {
     expect(readFileSync(to, 'utf8')).toBe('same bytes')
   })
 
-  it('replay rolls back a copied op on hash mismatch and reports the removed destination id', async () => {
+  it('replay never deletes the verified copy: an edited moved copy and its source are both kept', async () => {
+    // The source delete failed (file locked), then the user edited the copy on the desktop.
     const from = join(source, 'video.mp4')
     const to = join(desktop, 'video.mp4')
-    writeFileSync(from, 'the complete original')
-    writeFileSync(to, 'the complete') // truncated copy
-    const toId = fileIdOf(to)
+    writeFileSync(from, 'the original')
+    writeFileSync(to, 'the original, edited on the desktop')
     const { token, journal } = await crashedAfterCopy(from, to)
 
     const report = await journal.replay()
 
-    expect(report.rolledBack.map((op) => op.token)).toEqual([token])
-    expect(report.rolledBack[0].state).toBe('undone')
-    expect(report.removedIds).toEqual([toId])
-    expect(existsSync(to)).toBe(false)
-    expect(readFileSync(from, 'utf8')).toBe('the complete original')
+    expect(report.finished.map((op) => op.token)).toEqual([token])
+    expect(report.removedIds).toEqual([])
+    expect(readFileSync(to, 'utf8')).toBe('the original, edited on the desktop')
+    expect(readFileSync(from, 'utf8')).toBe('the original')
   })
 
   it('replay compares whole folders, not just files', async () => {
@@ -172,22 +192,40 @@ describe('OpsJournal', () => {
     expect(readFileSync(join(to, 'nested', 'b.jpg'), 'utf8')).toBe('bbb')
   })
 
-  it('replay rolls back a folder copy that is missing a file', async () => {
+  it('replay keeps the complete folder copy when the source was only partly deleted', async () => {
+    // rm(from) failed half-way (a locked file): the source now lacks nested/b.jpg.
     const from = join(source, 'Photos')
     const to = join(desktop, 'Photos')
-    mkdirSync(join(from, 'nested'), { recursive: true })
-    writeFileSync(join(from, 'a.jpg'), 'aaa')
-    writeFileSync(join(from, 'nested', 'b.jpg'), 'bbb')
-    mkdirSync(to)
+    mkdirSync(join(to, 'nested'), { recursive: true })
     writeFileSync(join(to, 'a.jpg'), 'aaa')
-    const toId = fileIdOf(to)
+    writeFileSync(join(to, 'nested', 'b.jpg'), 'bbb')
+    mkdirSync(from)
+    writeFileSync(join(from, 'a.jpg'), 'aaa')
     const { journal } = await crashedAfterCopy(from, to)
 
     const report = await journal.replay()
 
+    expect(report.finished).toHaveLength(1)
+    expect(report.removedIds).toEqual([])
+    expect(readFileSync(join(to, 'nested', 'b.jpg'), 'utf8')).toBe('bbb')
+    expect(readFileSync(join(from, 'a.jpg'), 'utf8')).toBe('aaa')
+  })
+
+  it('replay leaves a foreign file at `to` alone when the copy never got there', async () => {
+    const from = join(source, 'a.txt')
+    const to = join(desktop, 'a.txt')
+    writeFileSync(from, 'mine')
+    const { token, toId, journal } = await crashedBeforeRename(from, to)
+    // Later, before the next boot, some other file took the name.
+    writeFileSync(to, 'someone else')
+
+    const report = await journal.replay()
+
+    expect(report.rolledBack.map((op) => op.token)).toEqual([token])
+    expect(readFileSync(to, 'utf8')).toBe('someone else')
+    expect(readFileSync(from, 'utf8')).toBe('mine')
+    expect(existsSync(partialPathFor({ token, to }))).toBe(false)
     expect(report.removedIds).toEqual([toId])
-    expect(existsSync(to)).toBe(false)
-    expect(existsSync(join(from, 'nested', 'b.jpg'))).toBe(true)
   })
 
   it('replay treats a copied op whose source is already gone as finished', async () => {
@@ -271,15 +309,15 @@ describe('OpsJournal', () => {
       from: join(source, name),
       to: join(desktop, name)
     }))
-    for (const { from, to } of moves) {
-      writeFileSync(from, 'complete')
-      writeFileSync(to, 'partial')
-    }
-    const ids = moves.map(({ to }) => fileIdOf(to))
     const setup = createJournal()
     await setup.load()
+    const ids: string[] = []
     for (const { from, to } of moves) {
-      setup.advance(setup.begin({ from, to }).token, 'copied', { toId: fileIdOf(to) })
+      writeFileSync(from, 'complete')
+      const op = setup.begin({ from, to })
+      writeFileSync(partialPathFor(op), 'complete')
+      ids.push(fileIdOf(partialPathFor(op)))
+      setup.advance(op.token, 'copied', { toId: ids.at(-1) })
     }
 
     // First boot dies while writing ops.json after the second rollback.
@@ -295,16 +333,48 @@ describe('OpsJournal', () => {
     })
     await crashing.load()
     await expect(crashing.replay()).rejects.toThrow('power cut')
-    expect(moves.map(({ to }) => existsSync(to))).toEqual([false, false])
     expect(readJournal().ops.map((op) => op.state)).toEqual(['undone', 'copied'])
 
-    // Second boot still reports both destinations.
+    // Second boot still reports both copies.
     const journal = createJournal()
     await journal.load()
     const report = await journal.replay()
 
     expect(report.removedIds).toEqual(ids)
+    expect(readdirSync(desktop)).toEqual([])
     expect(moves.map(({ from }) => readFileSync(from, 'utf8'))).toEqual(['complete', 'complete'])
+  })
+
+  it('replay deletes the hidden partial copy an interrupted move left in the destination folder', async () => {
+    const from = join(source, 'photo.png')
+    writeFileSync(from, 'pixels')
+    const before = createJournal()
+    await before.load()
+    // Crash mid-copy (pending): only the partial exists.
+    const pending = before.begin({ from, to: join(desktop, 'photo.png') })
+    const pendingPartial = partialPathFor(pending)
+    writeFileSync(pendingPartial, 'pix')
+    // Crash after the verified copy was journaled, before its rename into place (copied).
+    const other = join(source, 'other.png')
+    writeFileSync(other, 'o')
+    const copied = before.begin({ from: other, to: join(desktop, 'other.png') })
+    const copiedPartial = partialPathFor(copied)
+    mkdirSync(copiedPartial)
+    writeFileSync(join(copiedPartial, 'inner'), 'o')
+    before.advance(copied.token, 'copied', { toId: fileIdOf(copiedPartial) })
+
+    const journal = createJournal()
+    await journal.load()
+    const report = await journal.replay()
+
+    expect(existsSync(pendingPartial)).toBe(false)
+    expect(existsSync(copiedPartial)).toBe(false)
+    expect(readFileSync(from, 'utf8')).toBe('pixels')
+    expect(readFileSync(other, 'utf8')).toBe('o')
+    expect(report.rolledBack.map((op) => op.token).sort()).toEqual(
+      [pending.token, copied.token].sort()
+    )
+    expect(partialPathFor(pending)).toBe(join(desktop, `.taskyard-${pending.token}.partial`))
   })
 
   it('replay leaves the disk alone when there is nothing to replay', async () => {
@@ -354,9 +424,7 @@ describe('replayJournal (boot step)', () => {
     const from = join(source, 'a.txt')
     const to = join(desktop, 'a.txt')
     writeFileSync(from, 'full')
-    writeFileSync(to, 'fu')
-    const toId = fileIdOf(to)
-    const { journal } = await crashedAfterCopy(from, to)
+    const { toId, journal } = await crashedBeforeRename(from, to)
     const layout = layoutStore()
     await layout.load()
     const display = newDisplayLayout(1, { x: 0, y: 0, width: 2560, height: 1440 })
@@ -386,9 +454,7 @@ describe('replayJournal (boot step)', () => {
     const from = join(source, 'a.txt')
     const to = join(desktop, 'a.txt')
     writeFileSync(from, 'full')
-    writeFileSync(to, 'fu')
-    const toId = fileIdOf(to)
-    const { journal } = await crashedAfterCopy(from, to)
+    const { toId, journal } = await crashedBeforeRename(from, to)
     writeFileSync(
       join(root, 'layout.json'),
       JSON.stringify({ version: 2, displays: [], paths: { [toId]: to }, lastSeen: {} })

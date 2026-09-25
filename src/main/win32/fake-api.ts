@@ -1,3 +1,5 @@
+import { existsSync, renameSync, statSync } from 'node:fs'
+import { FILE_ATTRIBUTE_HIDDEN } from './constants'
 import type {
   Hwnd,
   IconBitmap,
@@ -48,6 +50,8 @@ export interface FakeWin32Api extends Win32Api {
   emitForeground(hwnd: Hwnd | null): void
   foregroundListenerCount(): number
   setFileAttributes(path: string, attributes: number): void
+  /** What `canModifyFolder(dir)` answers (every folder is writable until told otherwise). */
+  setFolderWritable(dir: string, writable: boolean): void
   setRegistryString(hive: RegistryHive, key: string, value: string, data: string): void
   setWallpaper(rectPx: PixelRect, wallpaper: MonitorWallpaper): void
   setIcon(file: string, index: number, px: number, icon: IconBitmap): void
@@ -72,6 +76,7 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
   const guards = new Map<Hwnd, () => ZOrderMode>()
   const foregroundListeners = new Set<(hwnd: Hwnd | null) => void>()
   const attributes = new Map<string, number>()
+  const readOnlyFolders = new Set<string>()
   const registry = new Map<string, string>()
   const wallpapers = new Map<string, MonitorWallpaper>()
   const icons = new Map<string, IconBitmap>()
@@ -144,6 +149,10 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
     },
     foregroundListenerCount: () => foregroundListeners.size,
     setFileAttributes: (path, value) => attributes.set(keyOf(path), value),
+    setFolderWritable: (dir, writable) => {
+      if (writable) readOnlyFolders.delete(keyOf(dir))
+      else readOnlyFolders.add(keyOf(dir))
+    },
     setRegistryString: (hive, key, value, data) => registry.set(keyOf(hive, key, value), data),
     setWallpaper: (rect, wallpaper) => wallpapers.set(rectKey(rect), wallpaper),
     setIcon: (file, index, px, icon) => icons.set(keyOf(file, index, px), icon),
@@ -206,6 +215,23 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
       record('getFileAttributes', [path])
       return attributes.get(keyOf(path)) ?? null
     },
+    canModifyFolder(dir) {
+      record('canModifyFolder', [dir])
+      return !readOnlyFolders.has(keyOf(dir))
+    },
+    moveFile(from, to) {
+      record('moveFile', [from, to])
+      moveWithoutReplacing(from, to)
+    },
+    setHidden(path, hidden) {
+      record('setHidden', [path, hidden])
+      const current = attributes.get(keyOf(path)) ?? 0
+      attributes.set(
+        keyOf(path),
+        hidden ? current | FILE_ATTRIBUTE_HIDDEN : current & ~FILE_ATTRIBUTE_HIDDEN
+      )
+      return true
+    },
     regGetString(hive, key, value) {
       record('regGetString', [hive, key, value])
       return registry.get(keyOf(hive, key, value)) ?? null
@@ -219,4 +245,26 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
       return icons.get(keyOf(file, index, px)) ?? null
     }
   }
+}
+
+function fsError(code: string, message: string): Error {
+  return Object.assign(new Error(`${code}: ${message}`), { code })
+}
+
+/**
+ * MoveFileExW without MOVEFILE_REPLACE_EXISTING, on the real file system (the fake is used by
+ * headless tests over temp folders, and by the app under TASKYARD_NO_WIN32=1): refuses an
+ * existing target unless it is the same file (a case-only rename). `renameSync` fails with
+ * EXDEV across volumes, as MoveFileExW does without MOVEFILE_COPY_ALLOWED.
+ */
+function moveWithoutReplacing(from: string, to: string): void {
+  if (!existsSync(from)) throw fsError('ENOENT', `no such file, move '${from}' -> '${to}'`)
+  if (existsSync(to)) {
+    const a = statSync(from, { bigint: true })
+    const b = statSync(to, { bigint: true })
+    if (a.dev !== b.dev || a.ino !== b.ino) {
+      throw fsError('EEXIST', `file already exists, move '${from}' -> '${to}'`)
+    }
+  }
+  renameSync(from, to)
 }

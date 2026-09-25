@@ -110,6 +110,58 @@ export interface DesktopIcon {
   dataUrl: string
 }
 
+// ---------------------------------------------------------------------------------------------
+// Desktop file operations (Phase 4). Failures are typed results, never thrown across IPC (an
+// Error thrown in main reaches the renderer as a bare message, without its code).
+
+export const DESKTOP_ERROR_CODES = [
+  /** The id is not on the desktop (any more), or the file is gone (ENOENT). */
+  'not-found',
+  /** The item is in a folder Windows will not let this user change (Public Desktop). */
+  'readonly',
+  /** A file with that name exists (EEXIST); nothing was replaced. */
+  'exists',
+  /** Windows refused (EPERM / EACCES). */
+  'permission',
+  /** The file is in use by another app (EBUSY). */
+  'busy',
+  /** Longer than 255 characters (or ENAMETOOLONG from Windows). */
+  'name-too-long',
+  /** Empty, reserved (CON, NUL…), a forbidden character, or a trailing dot or space. */
+  'invalid-name',
+  /** A cross-volume copy did not match its source; the source was kept. */
+  'hash-mismatch',
+  /** ops.json is from a newer Taskyard, so no move can be journaled. */
+  'journal-read-only',
+  /** Anything else; `message` says what. */
+  'failed'
+] as const
+export type DesktopErrorCode = (typeof DESKTOP_ERROR_CODES)[number]
+
+export interface DesktopFailure {
+  ok: false
+  code: DesktopErrorCode
+  /** Technical detail (logs, toast descriptions); the renderer words the message by `code`. */
+  message: string
+}
+
+export type DesktopActionResult = { ok: true } | DesktopFailure
+/** `path` is the item's new path; its id is unchanged. */
+export type RenameResult = { ok: true; path: string } | DesktopFailure
+/**
+ * One dropped path. `token` identifies the journaled move for `desktop:undoMove`; it is null when
+ * the path was already on a desktop (nothing moved).
+ */
+export type MoveOutcome =
+  | { from: string; ok: true; id: string; path: string; token: string | null }
+  | ({ from: string } & DesktopFailure)
+export interface MoveToDesktopResult {
+  /** One outcome per requested path, in order. */
+  moves: MoveOutcome[]
+}
+/** `path` is where the file is back. */
+export type UndoMoveResult = { ok: true; path: string } | DesktopFailure
+
 export interface ThemeInfo {
   shouldUseDarkColors: boolean
   prefersReducedTransparency: boolean
@@ -166,7 +218,17 @@ export function isEventChannel(value: unknown): value is IpcEventName {
 export const IPC = {
   storage: { load: 'storage:load', save: 'storage:save', status: 'storage:status' },
   app: { quit: 'app:quit', openExternal: 'app:openExternal' },
-  display: { get: 'display:get', list: 'display:list' }
+  display: { get: 'display:get', list: 'display:list' },
+  desktop: {
+    list: 'desktop:list',
+    open: 'desktop:open',
+    showInFolder: 'desktop:showInFolder',
+    rename: 'desktop:rename',
+    trash: 'desktop:trash',
+    moveToDesktop: 'desktop:moveToDesktop',
+    undoMove: 'desktop:undoMove',
+    rescan: 'desktop:rescan'
+  }
 } as const
 
 /** `app:openExternal` opens only these URL schemes; main enforces it. */
@@ -184,6 +246,20 @@ export interface IpcRequests {
   /** null when main knows no display with that id (e.g. it was just unplugged). */
   'display:get': { args: [id: number]; result: DisplayInfo | null }
   'display:list': { args: []; result: DisplayInfo[] }
+  /** Every desktop item main knows (waits for the boot scan). */
+  'desktop:list': { args: []; result: DesktopItem[] }
+  /** `.url` → its URL in the browser; everything else → its default app (shell.openPath). */
+  'desktop:open': { args: [id: string]; result: DesktopActionResult }
+  'desktop:showInFolder': { args: [id: string]; result: DesktopActionResult }
+  /** `newName` is the new file name (with extension), not a path. Never replaces a file. */
+  'desktop:rename': { args: [id: string, newName: string]; result: RenameResult }
+  /** To the Recycle Bin. */
+  'desktop:trash': { args: [id: string]; result: DesktopActionResult }
+  /** Absolute paths (Explorer drop) moved into the user's Desktop, journaled, hash-verified. */
+  'desktop:moveToDesktop': { args: [paths: string[]]; result: MoveToDesktopResult }
+  'desktop:undoMove': { args: [token: string]; result: UndoMoveResult }
+  /** Scans again and re-emits the full list as desktop:changed. */
+  'desktop:rescan': { args: []; result: void }
 }
 
 export type RequestChannel = keyof IpcRequests
@@ -193,15 +269,6 @@ export type RequestChannel = keyof IpcRequests
  * preload and not handled until the owning phase adds them; that phase finalises the result types.
  */
 export interface PlannedRequests {
-  /** Phase 4 */
-  'desktop:list': { args: []; result: DesktopItem[] }
-  'desktop:open': { args: [id: string]; result: void }
-  'desktop:showInFolder': { args: [id: string]; result: void }
-  'desktop:rename': { args: [id: string, newName: string]; result: unknown }
-  'desktop:trash': { args: [id: string]; result: void }
-  'desktop:moveToDesktop': { args: [paths: string[]]; result: unknown }
-  'desktop:undoMove': { args: [token: string]; result: void }
-  'desktop:rescan': { args: []; result: void }
   /** Phase 8 */
   'desktop:startDrag': { args: [ids: string[]]; result: void }
   /** Phase 10 */

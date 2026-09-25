@@ -54,6 +54,35 @@ export const FILE_ATTRIBUTE_DIRECTORY = 0x00000010
 export const FILE_ATTRIBUTE_OFFLINE = 0x00001000
 export const FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x00400000
 
+export const FILE_ATTRIBUTE_NORMAL = 0x00000080
+
+// CreateFileW (canModifyFolder): directory access rights, sharing, disposition, flags.
+export const FILE_ADD_FILE = 0x0002
+export const FILE_DELETE_CHILD = 0x0040
+export const FILE_SHARE_READ = 0x1
+export const FILE_SHARE_WRITE = 0x2
+export const FILE_SHARE_DELETE = 0x4
+export const OPEN_EXISTING = 3
+/** Required to open a directory handle. */
+export const FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+/** `(HANDLE)-1` as koffi returns an `intptr_t`. */
+export const INVALID_HANDLE_VALUE = -1
+
+// Win32 error codes (GetLastError) that file operations map to Node-style codes.
+export const WIN32_ERROR_CODES: Readonly<Record<number, string>> = {
+  2: 'ENOENT', // ERROR_FILE_NOT_FOUND
+  3: 'ENOENT', // ERROR_PATH_NOT_FOUND
+  5: 'EPERM', // ERROR_ACCESS_DENIED
+  17: 'EXDEV', // ERROR_NOT_SAME_DEVICE
+  19: 'EPERM', // ERROR_WRITE_PROTECT
+  32: 'EBUSY', // ERROR_SHARING_VIOLATION
+  33: 'EBUSY', // ERROR_LOCK_VIOLATION
+  80: 'EEXIST', // ERROR_FILE_EXISTS
+  123: 'EINVAL', // ERROR_INVALID_NAME
+  183: 'EEXIST', // ERROR_ALREADY_EXISTS
+  206: 'ENAMETOOLONG' // ERROR_FILENAME_EXCED_RANGE
+}
+
 // Registry. Predefined HKEYs are sign-extended 32-bit values: pass them as intptr_t.
 export const HKEY_CURRENT_USER = 0x80000001 | 0
 export const HKEY_LOCAL_MACHINE = 0x80000002 | 0

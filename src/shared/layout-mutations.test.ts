@@ -10,6 +10,7 @@ import {
   moveGroupToDisplay,
   moveItems,
   putGroup,
+  renamePath,
   setLoosePosition,
   updateDisplay,
   updateGroup,
@@ -397,5 +398,37 @@ describe('moveGroupToDisplay', () => {
     expect(moveGroupToDisplay(layout, 1, 'gone', 2, clamp)).toBe(layout)
     expect(moveGroupToDisplay(layout, 1, 'g', 9, clamp)).toBe(layout)
     expect(moveGroupToDisplay(layout, 9, 'g', 2, clamp)).toBe(layout)
+  })
+})
+
+describe("renamePath (main applies it when a file is renamed, ours or Explorer's)", () => {
+  function withPaths(): LayoutFile {
+    return {
+      ...emptyLayout(),
+      displays: [{ ...newDisplayLayout(1, PRIMARY), loose: { '2:2': { x: 0, y: 0 } } }],
+      paths: { '1:1': 'C:\\D\\a.txt' }
+    }
+  }
+
+  it('updates the one path entry of a known id and nothing else', () => {
+    const input = withPaths()
+    const result = renamePath(input, '1:1', 'C:\\D\\b.txt')
+
+    expect(result.paths).toEqual({ '1:1': 'C:\\D\\b.txt' })
+    expect(result.displays).toBe(input.displays)
+  })
+
+  it('records the path of an id that is placed but has no path yet', () => {
+    expect(renamePath(withPaths(), '2:2', 'C:\\D\\x.txt').paths).toEqual({
+      '1:1': 'C:\\D\\a.txt',
+      '2:2': 'C:\\D\\x.txt'
+    })
+  })
+
+  it('returns the same object for the same path or an id the layout does not know', () => {
+    const input = withPaths()
+
+    expect(renamePath(input, '1:1', 'C:\\D\\a.txt')).toBe(input)
+    expect(renamePath(input, '9:9', 'C:\\D\\z.txt')).toBe(input)
   })
 })

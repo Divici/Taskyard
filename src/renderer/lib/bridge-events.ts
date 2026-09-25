@@ -39,7 +39,8 @@ function applyStorageChanged(changed: StorageChanged, targets: BridgeEventTarget
 }
 
 /**
- * Routes main's events into the stores: desktop changes → items, recoveries → toasts, and every
+ * Routes main's events into the stores: icons → items (desktop:changed / desktop:renamed are
+ * ordered against desktop:list in desktop-sync.ts), recoveries → toasts, and every
  * accepted save (this window's echo included) → that store's `receive`, which adopts newer
  * revisions and replays its own unsaved changes on top. Returns one unsubscribe for all of them.
  */
@@ -48,8 +49,6 @@ export function subscribeBridgeEvents(
   targets: BridgeEventTargets = APP_EVENT_TARGETS
 ): () => void {
   const unsubscribers = [
-    api.on('desktop:changed', (change) => targets.items.getState().applyChange(change)),
-    api.on('desktop:renamed', ({ id, path }) => targets.items.getState().applyRenamed(id, path)),
     api.on('desktop:icon', ({ id, px, dataUrl }) =>
       targets.items.getState().setIcon(id, px, dataUrl)
     ),

@@ -23,7 +23,8 @@ describe('ENV', () => {
     expect(ENV).toEqual({
       userData: 'TASKYARD_USER_DATA',
       logLevel: 'TASKYARD_LOG_LEVEL',
-      noWin32: 'TASKYARD_NO_WIN32'
+      noWin32: 'TASKYARD_NO_WIN32',
+      desktopDirs: 'TASKYARD_DESKTOP_DIRS'
     })
   })
 })

@@ -81,6 +81,21 @@ export interface Win32Bindings {
   ): number
   // kernel32
   GetFileAttributesW(path: string): number
+  SetFileAttributesW(path: string, attributes: number): boolean
+  /** Returns the HANDLE as an `intptr_t` (`INVALID_HANDLE_VALUE` = -1). */
+  CreateFileW(
+    path: string,
+    access: number,
+    share: number,
+    security: null,
+    disposition: number,
+    flags: number,
+    template: null
+  ): number | bigint
+  CloseHandle(handle: number | bigint): boolean
+  MoveFileExW(from: string, to: string, flags: number): boolean
+  /** koffi keeps the last error of the previous koffi call, so this reads that call's error. */
+  GetLastError(): number
   // types
   /** `LRESULT CALLBACK SUBCLASSPROC(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR)` pointer. */
   SubclassProc: KoffiType
@@ -232,6 +247,17 @@ export function loadWin32Bindings(koffi: Koffi): Win32Bindings {
       'long __stdcall RegGetValueW(intptr_t hkey, str16 subKey, str16 value, uint32_t flags, void *type, void *data, _Inout_ uint32_t *dataBytes)'
     ),
     GetFileAttributesW: kernel32.func('uint32_t __stdcall GetFileAttributesW(str16 path)'),
+    SetFileAttributesW: toBool(
+      kernel32.func('int __stdcall SetFileAttributesW(str16 path, uint32_t attributes)')
+    ),
+    CreateFileW: kernel32.func(
+      'intptr_t __stdcall CreateFileW(str16 path, uint32_t access, uint32_t share, void *security, uint32_t disposition, uint32_t flags, void *template)'
+    ),
+    CloseHandle: toBool(kernel32.func('int __stdcall CloseHandle(intptr_t handle)')),
+    MoveFileExW: toBool(
+      kernel32.func('int __stdcall MoveFileExW(str16 from, str16 to, uint32_t flags)')
+    ),
+    GetLastError: kernel32.func('uint32_t __stdcall GetLastError()'),
     SubclassProc,
     WinEventProc,
     WINDOWPOS,

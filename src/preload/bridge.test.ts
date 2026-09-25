@@ -48,6 +48,14 @@ describe('createTaskyardApi', () => {
     await api.app.openExternal('ms-settings:display')
     await api.display.get(2528732444)
     await api.display.list()
+    await api.desktop.list()
+    await api.desktop.open('1:2')
+    await api.desktop.showInFolder('1:2')
+    await api.desktop.rename('1:2', 'b.txt')
+    await api.desktop.trash('1:2')
+    await api.desktop.moveToDesktop(['D:\\a.txt'])
+    await api.desktop.undoMove('token-1')
+    await api.desktop.rescan()
 
     expect(ipc.invoke.mock.calls).toEqual([
       ['storage:load', 'layout'],
@@ -56,7 +64,15 @@ describe('createTaskyardApi', () => {
       ['app:quit'],
       ['app:openExternal', 'ms-settings:display'],
       ['display:get', 2528732444],
-      ['display:list']
+      ['display:list'],
+      ['desktop:list'],
+      ['desktop:open', '1:2'],
+      ['desktop:showInFolder', '1:2'],
+      ['desktop:rename', '1:2', 'b.txt'],
+      ['desktop:trash', '1:2'],
+      ['desktop:moveToDesktop', ['D:\\a.txt']],
+      ['desktop:undoMove', 'token-1'],
+      ['desktop:rescan']
     ])
   })
 

@@ -1,13 +1,45 @@
 import { describe, expect, it } from 'vitest'
-import { EVENT_CHANNELS, EXTERNAL_URL_PROTOCOLS, IPC, isEventChannel, STORE_NAMES } from './ipc'
+import {
+  DESKTOP_ERROR_CODES,
+  EVENT_CHANNELS,
+  EXTERNAL_URL_PROTOCOLS,
+  IPC,
+  isEventChannel,
+  STORE_NAMES
+} from './ipc'
 
 describe('IPC channel names', () => {
   it('names the request channels', () => {
     expect(IPC).toEqual({
       storage: { load: 'storage:load', save: 'storage:save', status: 'storage:status' },
       app: { quit: 'app:quit', openExternal: 'app:openExternal' },
-      display: { get: 'display:get', list: 'display:list' }
+      display: { get: 'display:get', list: 'display:list' },
+      desktop: {
+        list: 'desktop:list',
+        open: 'desktop:open',
+        showInFolder: 'desktop:showInFolder',
+        rename: 'desktop:rename',
+        trash: 'desktop:trash',
+        moveToDesktop: 'desktop:moveToDesktop',
+        undoMove: 'desktop:undoMove',
+        rescan: 'desktop:rescan'
+      }
     })
+  })
+
+  it('names the typed desktop error codes', () => {
+    expect(DESKTOP_ERROR_CODES).toEqual([
+      'not-found',
+      'readonly',
+      'exists',
+      'permission',
+      'busy',
+      'name-too-long',
+      'invalid-name',
+      'hash-mismatch',
+      'journal-read-only',
+      'failed'
+    ])
   })
 
   it('lists every main → renderer event', () => {

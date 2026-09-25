@@ -8,6 +8,9 @@ import { configureLogger, defaultLogDir, LOG_FILE_NAME } from './app/logger'
 import { installQuitPath } from './app/quit-path'
 import { acquireSingleInstanceLock } from './app/single-instance'
 import { startDesktop } from './app/start-desktop'
+import { registerDesktopIpc } from './desktop/desktop-ipc'
+import { resolveDesktopDirs } from './desktop/desktop-dirs'
+import { createDesktopService, type DesktopService } from './desktop/desktop-service'
 import type { IpcEventEmitter } from './ipc/events'
 import { registerIpcHandlers } from './ipc/handlers'
 import { createSenderGuard } from './ipc/sender-guard'
@@ -86,9 +89,25 @@ function startPrimaryInstance(): void {
     quit: () => app.quit(),
     log
   })
+  // The desktop folders' items (Phase 4). The service needs the Win32 api, which exists once the
+  // windows do, so it is created in the scan step; desktop:* requests wait for it.
+  const desktopDirs = resolveDesktopDirs({ env: process.env, userDesktop: app.getPath('desktop') })
+  let desktopFiles: DesktopService | null = null
+  let desktopFilesReady: (service: DesktopService) => void = () => {}
+  const desktopFilesPromise = new Promise<DesktopService>(
+    (resolve) => (desktopFilesReady = resolve)
+  )
+  registerDesktopIpc(ipcMain, trust, () => desktopFilesPromise)
+
   // Flush before quit, desktop windows marked quitting only when the quit really proceeds (and
-  // guarded again if it is cancelled), session-end flush, window-all-closed guard.
-  installQuitPath(app, { storage, desktop: () => desktop, log })
+  // guarded again if it is cancelled), session-end flush, window-all-closed guard, and the
+  // desktop watcher stopped at will-quit.
+  installQuitPath(app, {
+    storage,
+    desktop: () => desktop,
+    log,
+    stopWatching: () => desktopFiles?.stop()
+  })
 
   // LOCKED order: stores load → journal replay → windows → scan → watch. Stores load and the
   // journal replays while Electron initialises; the windows wait for ready. Without desktop
@@ -124,9 +143,33 @@ function startPrimaryInstance(): void {
         // null: startDesktop explained why in a dialog and is quitting; no scan, no watch.
         return desktop ?? STOP_BOOT
       },
-      // Phase 4 plugs in the desktop scanner and the file watcher.
-      scan: () => {},
-      watch: () => {}
+      // The full list goes to every window as desktop:changed; a window that loads later pulls
+      // it with desktop:list (which waits for this scan).
+      scan: async () => {
+        const selection = await win32
+        if (selection.kind === 'unavailable') return STOP_BOOT
+        desktopFiles = createDesktopService({
+          dirs: desktopDirs,
+          win32: selection.api,
+          shell: {
+            openPath: (path) => shell.openPath(path),
+            openExternal: (url) => shell.openExternal(url),
+            showItemInFolder: (path) => shell.showItemInFolder(path),
+            trashItem: (path) => shell.trashItem(path),
+            readShortcutLink: (path) => shell.readShortcutLink(path)
+          },
+          journal: storage.ops,
+          layout: storage.layout,
+          emit: (event, payload) => events.emit(event, payload),
+          env: process.env,
+          log
+        })
+        desktopFilesReady(desktopFiles)
+        await desktopFiles.scan()
+        return undefined
+      },
+      // Started after the scan, so the watcher's model is the scanned one.
+      watch: () => desktopFiles?.watch()
     },
     log,
     // createWindows threw outside startDesktop (already logged by boot): quit.

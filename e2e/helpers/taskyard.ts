@@ -14,6 +14,11 @@ export const ELECTRON_BINARY = createRequire(__filename)('electron') as string
 
 export interface Profile {
   userData: string
+  /**
+   * The desktop folder this launch scans and watches (TASKYARD_DESKTOP_DIRS): a temp folder, so
+   * no e2e run ever reads or changes the real desktop.
+   */
+  desktop: string
   logFile: string
   readLog(): string
   dispose(): void
@@ -22,13 +27,18 @@ export interface Profile {
 /** A throwaway userData directory, so each launch has its own logs and single-instance lock. */
 export function createProfile(): Profile {
   const userData = mkdtempSync(join(tmpdir(), 'taskyard-e2e-'))
+  const desktop = mkdtempSync(join(tmpdir(), 'taskyard-e2e-desktop-'))
   const logFile = join(userData, 'logs', LOG_FILE_NAME)
   return {
     userData,
+    desktop,
     logFile,
     readLog: () => (existsSync(logFile) ? readFileSync(logFile, 'utf8') : ''),
-    dispose: () =>
-      rmSync(userData, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+    dispose: () => {
+      for (const dir of [userData, desktop]) {
+        rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+      }
+    }
   }
 }
 
@@ -39,6 +49,7 @@ export function taskyardEnv(profile: Profile): Record<string, string> {
     if (value !== undefined && key !== 'ELECTRON_RUN_AS_NODE') env[key] = value
   }
   env[ENV.userData] = profile.userData
+  env[ENV.desktopDirs] = profile.desktop
   return env
 }
 

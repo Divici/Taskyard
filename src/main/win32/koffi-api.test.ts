@@ -3,6 +3,14 @@ import type { Hwnd, Win32Api } from './api'
 import type { CallbackHandle, Koffi, Win32Bindings } from './bindings'
 import {
   ERROR_ACCESS_DENIED,
+  FILE_ADD_FILE,
+  FILE_DELETE_CHILD,
+  FILE_FLAG_BACKUP_SEMANTICS,
+  FILE_SHARE_DELETE,
+  FILE_SHARE_READ,
+  FILE_SHARE_WRITE,
+  INVALID_HANDLE_VALUE,
+  OPEN_EXISTING,
   ERROR_FILE_NOT_FOUND,
   ERROR_MORE_DATA,
   ERROR_SUCCESS,
@@ -50,6 +58,12 @@ interface FakeBindings {
     RemoveWindowSubclass: Mock<(hwnd: Hwnd) => boolean>
     DefSubclassProc: Mock<() => number>
     RegGetValueW: Mock<(...args: unknown[]) => number>
+    GetFileAttributesW: Mock<(path: string) => number>
+    SetFileAttributesW: Mock<(path: string, attributes: number) => boolean>
+    CreateFileW: Mock<(...args: unknown[]) => number | bigint>
+    CloseHandle: Mock<(handle: number | bigint) => boolean>
+    MoveFileExW: Mock<(...args: unknown[]) => boolean>
+    GetLastError: Mock<() => number>
     [name: string]: unknown
   }
   order: Hwnd[]
@@ -131,6 +145,11 @@ function fakeBindings(fk: FakeKoffi): FakeBindings {
     UnhookWinEvent: vi.fn(() => true),
     RegGetValueW: vi.fn<(...args: unknown[]) => number>(),
     GetFileAttributesW: vi.fn(() => 0x20),
+    SetFileAttributesW: vi.fn(() => true),
+    CreateFileW: vi.fn<(...args: unknown[]) => number | bigint>(() => 0x2a4),
+    CloseHandle: vi.fn(() => true),
+    MoveFileExW: vi.fn<(...args: unknown[]) => boolean>(() => true),
+    GetLastError: vi.fn(() => 0),
     SubclassProc: {},
     WinEventProc: {},
     WINDOWPOS: {}
@@ -377,5 +396,88 @@ describe('regGetString', () => {
     expect(() => createApi().regGetString('HKLM', 'SAM', 'x')).toThrow(
       'RegGetValueW(SAM\\x) failed with status 5'
     )
+  })
+})
+
+describe('file system calls', () => {
+  it('canModifyFolder opens the folder for add-file + delete-child access, then closes it', () => {
+    const api = createApi()
+
+    expect(api.canModifyFolder('C:\\Users\\me\\Desktop\\')).toBe(true)
+
+    expect(fb.b.CreateFileW).toHaveBeenCalledExactlyOnceWith(
+      '\\\\?\\C:\\Users\\me\\Desktop',
+      FILE_ADD_FILE | FILE_DELETE_CHILD,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+      null,
+      OPEN_EXISTING,
+      FILE_FLAG_BACKUP_SEMANTICS,
+      null
+    )
+    expect(fb.b.CloseHandle).toHaveBeenCalledExactlyOnceWith(0x2a4)
+  })
+
+  it('canModifyFolder is false when Windows refuses the handle (nothing to close)', () => {
+    fb.b.CreateFileW.mockReturnValue(INVALID_HANDLE_VALUE)
+
+    expect(createApi().canModifyFolder('C:\\Users\\Public\\Desktop')).toBe(false)
+    expect(fb.b.CloseHandle).not.toHaveBeenCalled()
+  })
+
+  it('moveFile calls MoveFileExW on \\\\?\\ paths without MOVEFILE_REPLACE_EXISTING', () => {
+    createApi().moveFile('C:\\d\\a.txt', 'C:\\d\\b.txt')
+
+    expect(fb.b.MoveFileExW).toHaveBeenCalledExactlyOnceWith(
+      '\\\\?\\C:\\d\\a.txt',
+      '\\\\?\\C:\\d\\b.txt',
+      0
+    )
+  })
+
+  it('moveFile turns the Win32 error into a Node-style error code', () => {
+    const cases: Array<[number, string]> = [
+      [2, 'ENOENT'],
+      [3, 'ENOENT'],
+      [5, 'EPERM'],
+      [17, 'EXDEV'],
+      [32, 'EBUSY'],
+      [80, 'EEXIST'],
+      [183, 'EEXIST'],
+      [123, 'EINVAL'],
+      [206, 'ENAMETOOLONG'],
+      [1234, 'EIO']
+    ]
+    const api = createApi()
+    fb.b.MoveFileExW.mockReturnValue(false)
+    for (const [win32Error, code] of cases) {
+      fb.b.GetLastError.mockReturnValue(win32Error)
+      expect(() => api.moveFile('C:\\a', 'C:\\b'), code).toThrow(
+        expect.objectContaining({ code, errno: win32Error })
+      )
+    }
+  })
+
+  it('setHidden adds or removes FILE_ATTRIBUTE_HIDDEN and keeps the other attributes', () => {
+    const api = createApi()
+    fb.b.GetFileAttributesW.mockReturnValue(0x20)
+
+    expect(api.setHidden('C:\\d\\x', true)).toBe(true)
+    expect(fb.b.SetFileAttributesW).toHaveBeenLastCalledWith('\\\\?\\C:\\d\\x', 0x22)
+
+    fb.b.GetFileAttributesW.mockReturnValue(0x02)
+    expect(api.setHidden('C:\\d\\x', false)).toBe(true)
+    // No attribute left: Windows wants FILE_ATTRIBUTE_NORMAL rather than 0.
+    expect(fb.b.SetFileAttributesW).toHaveBeenLastCalledWith('\\\\?\\C:\\d\\x', 0x80)
+  })
+
+  it('setHidden reports false for a missing path or a refused change', () => {
+    const api = createApi()
+    fb.b.GetFileAttributesW.mockReturnValue(0xffffffff)
+    expect(api.setHidden('C:\\gone', true)).toBe(false)
+    expect(fb.b.SetFileAttributesW).not.toHaveBeenCalled()
+
+    fb.b.GetFileAttributesW.mockReturnValue(0x20)
+    fb.b.SetFileAttributesW.mockReturnValue(false)
+    expect(api.setHidden('C:\\d\\x', true)).toBe(false)
   })
 })

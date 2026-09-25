@@ -7,7 +7,7 @@
  * Exit 0 on success; 1 on timeout, a logged load failure, or an early exit (log tail printed).
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { ENV } from '../src/main/app/env'
@@ -59,13 +59,16 @@ async function main(): Promise<number> {
   }
 
   const userData = mkdtempSync(join(tmpdir(), 'taskyard-verify-koffi-'))
+  const desktop = join(userData, 'desktop')
+  mkdirSync(desktop)
   const logFile = join(userData, 'logs', LOG_FILE_NAME)
   const readLog = (): string => (existsSync(logFile) ? readFileSync(logFile, 'utf8') : '')
 
   log(`launching ${EXE}`)
   log(`${ENV.userData}=${userData}`)
   const child = spawn(EXE, [], {
-    env: { ...process.env, [ENV.userData]: userData },
+    // A temp desktop: the packaged app must not scan or watch the real one during the check.
+    env: { ...process.env, [ENV.userData]: userData, [ENV.desktopDirs]: desktop },
     stdio: 'ignore'
   })
   let exitCode: number | null | undefined

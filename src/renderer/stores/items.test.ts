@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { DesktopItem } from '@shared/schema'
 import { createItemsStore } from './items'
 
@@ -98,6 +98,50 @@ describe('items store', () => {
     store.getState().applyRenamed('7:7', 'C:\\Desktop\\x.txt')
 
     expect(store.getState().byId).toBe(before)
+  })
+
+  it('onItemsChanged: the reconcile seam (Phase 7) hears the present ids after hydrate and applyChange', () => {
+    const store = createItemsStore()
+    const reconcile = vi.fn()
+    const unsubscribe = store.getState().onItemsChanged(reconcile)
+
+    store.getState().hydrate([item('1:1'), item('1:2')])
+    expect(reconcile).toHaveBeenLastCalledWith(['1:1', '1:2'])
+
+    store.getState().applyChange({ added: [item('1:3')], removed: ['1:1'], changed: [] })
+    expect(reconcile).toHaveBeenLastCalledWith(['1:2', '1:3'])
+    expect(reconcile).toHaveBeenCalledTimes(2)
+
+    // Renames and icons change no presence: no reconcile.
+    store.getState().applyRenamed('1:2', 'C:\\Desktop\\b.txt')
+    store.getState().setIcon('1:2', 32, 'data:x')
+    expect(reconcile).toHaveBeenCalledTimes(2)
+
+    unsubscribe()
+    store.getState().applyChange({ added: [], removed: ['1:2'], changed: [] })
+    expect(reconcile).toHaveBeenCalledTimes(2)
+  })
+
+  it('works with no listener, and a throwing listener neither breaks the update nor the others', () => {
+    const store = createItemsStore()
+    store.getState().hydrate([item('1:1')])
+    expect(Object.keys(store.getState().byId)).toEqual(['1:1'])
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const good = vi.fn()
+    store.getState().onItemsChanged(() => {
+      throw new Error('reconcile bug')
+    })
+    store.getState().onItemsChanged(good)
+
+    store.getState().applyChange({ added: [item('1:2')], removed: [], changed: [] })
+
+    expect(Object.keys(store.getState().byId)).toEqual(['1:1', '1:2'])
+    expect(good).toHaveBeenCalledExactlyOnceWith(['1:1', '1:2'])
+    expect(error).toHaveBeenCalledWith(
+      'items: an onItemsChanged listener failed',
+      expect.any(Error)
+    )
   })
 
   it('setIcon(id, px, dataUrl) stores the icon and keeps the sharpest one', () => {

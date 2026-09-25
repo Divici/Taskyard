@@ -1,4 +1,14 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  accessSync,
+  constants,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -280,6 +290,81 @@ describe.runIf(realWin32TestsEnabled())('createKoffiWin32Api (real Win32)', () =
 
     expect(api.regGetString('HKCU', 'Environment', 'TASKYARD_NO_SUCH_VALUE')).toBeNull()
     expect(api.regGetString('HKCU', 'Software\\Taskyard\\NoSuchKey', 'x')).toBeNull()
+  })
+
+  it('canModifyFolder: a writable temp folder yes, a missing one no, and no side effects', () => {
+    const dir = join(tmp, 'writable')
+    mkdirSync(dir)
+
+    expect(api.canModifyFolder(dir)).toBe(true)
+    expect(api.canModifyFolder(join(tmp, 'no-such-folder'))).toBe(false)
+    expect(readdirSync(dir)).toEqual([])
+  })
+
+  it('canModifyFolder honours an ACL that denies adding files (fs.access W_OK would not)', () => {
+    const dir = join(tmp, 'denied')
+    mkdirSync(dir)
+    const user = `${process.env['USERDOMAIN']}\\${process.env['USERNAME']}`
+    const deny = spawnSync('icacls', [dir, '/deny', `${user}:(WD,AD,DC)`], { encoding: 'utf8' })
+    expect(deny.status, deny.stdout + deny.stderr).toBe(0)
+    try {
+      expect(api.canModifyFolder(dir)).toBe(false)
+      // Node's check ignores ACLs on Windows, which is why Taskyard does not use it (R13).
+      expect(() => accessSync(dir, constants.W_OK)).not.toThrow()
+      expect(readdirSync(dir)).toEqual([])
+    } finally {
+      spawnSync('icacls', [dir, '/remove:d', user])
+    }
+    expect(api.canModifyFolder(dir)).toBe(true)
+  })
+
+  it('moveFile never replaces an existing file and keeps the file id', () => {
+    const dir = join(tmp, 'move')
+    mkdirSync(dir)
+    writeFileSync(join(dir, 'a.txt'), 'A')
+    writeFileSync(join(dir, 'b.txt'), 'B')
+    const id = statSync(join(dir, 'a.txt'), { bigint: true }).ino
+
+    expect(() => api.moveFile(join(dir, 'a.txt'), join(dir, 'b.txt'))).toThrow(
+      expect.objectContaining({ code: 'EEXIST' })
+    )
+    expect(readFileSync(join(dir, 'b.txt'), 'utf8')).toBe('B')
+    expect(readFileSync(join(dir, 'a.txt'), 'utf8')).toBe('A')
+
+    api.moveFile(join(dir, 'a.txt'), join(dir, 'renamed.txt'))
+    expect(statSync(join(dir, 'renamed.txt'), { bigint: true }).ino).toBe(id)
+
+    // A case-only rename of the same file goes through.
+    api.moveFile(join(dir, 'renamed.txt'), join(dir, 'Renamed.TXT'))
+    expect(readdirSync(dir).sort()).toEqual(['Renamed.TXT', 'b.txt'])
+
+    expect(() => api.moveFile(join(dir, 'missing.txt'), join(dir, 'x.txt'))).toThrow(
+      expect.objectContaining({ code: 'ENOENT' })
+    )
+  })
+
+  it('moveFile works on paths past MAX_PATH', () => {
+    const deepDir = join(tmp, 'd'.repeat(120), 'e'.repeat(120))
+    mkdirSync(deepDir, { recursive: true })
+    const from = join(deepDir, 'long-name-source.txt')
+    writeFileSync(from, 'x')
+    const to = join(deepDir, 'long-name-target.txt')
+    expect(to.length).toBeGreaterThan(260)
+
+    api.moveFile(from, to)
+
+    expect(readdirSync(deepDir)).toEqual(['long-name-target.txt'])
+  })
+
+  it('setHidden sets and clears FILE_ATTRIBUTE_HIDDEN', () => {
+    const file = join(tmp, 'to-hide.txt')
+    writeFileSync(file, 'x')
+
+    expect(api.setHidden(file, true)).toBe(true)
+    expect(api.getFileAttributes(file)! & FILE_ATTRIBUTE_HIDDEN).toBe(FILE_ATTRIBUTE_HIDDEN)
+    expect(api.setHidden(file, false)).toBe(true)
+    expect(api.getFileAttributes(file)! & FILE_ATTRIBUTE_HIDDEN).toBe(0)
+    expect(api.setHidden(join(tmp, 'missing.txt'), true)).toBe(false)
   })
 
   it('declares the Phase 5 and Phase 6 calls but refuses them until then', () => {

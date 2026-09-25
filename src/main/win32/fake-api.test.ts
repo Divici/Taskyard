@@ -1,5 +1,17 @@
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { ZOrderMode } from './api'
+import { FILE_ATTRIBUTE_HIDDEN } from './constants'
 import { createFakeWin32Api, FAKE_APP_WINDOW, FAKE_SHELL_WINDOW } from './fake-api'
 
 const OURS = 0x5001n
@@ -182,5 +194,64 @@ describe('createFakeWin32Api', () => {
     expect(api.regGetString('HKCU', 'control panel\\colors', 'Background')).toBe('0 0 0')
     expect(api.getWallpaperForMonitor({ x: 0, y: 0, width: 2560, height: 1440 })).toBe(wallpaper)
     expect(api.extractIcon('C:\\APP.exe', 0, 64)).toBe(icon)
+  })
+
+  it('answers canModifyFolder from configured folders (writable unless told otherwise)', () => {
+    const api = createFakeWin32Api()
+
+    expect(api.canModifyFolder('C:\\Users\\me\\Desktop')).toBe(true)
+    api.setFolderWritable('C:\\Users\\Public\\Desktop', false)
+
+    expect(api.canModifyFolder('c:\\users\\public\\desktop')).toBe(false)
+    expect(api.callsTo('canModifyFolder')).toEqual([
+      ['C:\\Users\\me\\Desktop'],
+      ['c:\\users\\public\\desktop']
+    ])
+  })
+
+  it('sets and clears the hidden attribute in its attribute table', () => {
+    const api = createFakeWin32Api()
+    api.setFileAttributes('C:\\d\\a.txt', 0x20)
+
+    expect(api.setHidden('C:\\d\\a.txt', true)).toBe(true)
+    expect(api.getFileAttributes('C:\\d\\a.txt')).toBe(0x20 | FILE_ATTRIBUTE_HIDDEN)
+    expect(api.setHidden('C:\\d\\a.txt', false)).toBe(true)
+    expect(api.getFileAttributes('C:\\d\\a.txt')).toBe(0x20)
+    expect(api.callsTo('setHidden')).toEqual([
+      ['C:\\d\\a.txt', true],
+      ['C:\\d\\a.txt', false]
+    ])
+  })
+
+  it('moves files on disk like MoveFileExW without MOVEFILE_REPLACE_EXISTING', () => {
+    const api = createFakeWin32Api()
+    const dir = mkdtempSync(join(tmpdir(), 'taskyard-fake-move-'))
+    try {
+      writeFileSync(join(dir, 'a.txt'), 'A')
+      writeFileSync(join(dir, 'b.txt'), 'B')
+      const id = statSync(join(dir, 'a.txt'), { bigint: true }).ino
+
+      // Never replaces: the target keeps its content and the source stays.
+      expect(() => api.moveFile(join(dir, 'a.txt'), join(dir, 'B.TXT'))).toThrow(
+        expect.objectContaining({ code: 'EEXIST' })
+      )
+      expect(readFileSync(join(dir, 'b.txt'), 'utf8')).toBe('B')
+      expect(readFileSync(join(dir, 'a.txt'), 'utf8')).toBe('A')
+
+      api.moveFile(join(dir, 'a.txt'), join(dir, 'c.txt'))
+      expect(existsSync(join(dir, 'a.txt'))).toBe(false)
+      expect(statSync(join(dir, 'c.txt'), { bigint: true }).ino).toBe(id)
+
+      // A case-only rename of the same file is allowed.
+      api.moveFile(join(dir, 'c.txt'), join(dir, 'C.txt'))
+      expect(readdirSync(dir).sort()).toEqual(['C.txt', 'b.txt'])
+
+      expect(() => api.moveFile(join(dir, 'missing'), join(dir, 'x'))).toThrow(
+        expect.objectContaining({ code: 'ENOENT' })
+      )
+      expect(api.callsTo('moveFile')).toHaveLength(4)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

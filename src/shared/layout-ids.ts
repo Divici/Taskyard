@@ -41,3 +41,38 @@ export function forgetItemIds(layout: LayoutFile, ids: Iterable<string>): Layout
     lastSeen: without(layout.lastSeen, set)
   }
 }
+
+function rekey<V>(record: Record<string, V>, oldId: string, newId: string): Record<string, V> {
+  if (!(oldId in record)) return record
+  return Object.fromEntries(
+    Object.entries(record).map(([id, value]) => [id === oldId ? newId : id, value])
+  )
+}
+
+/**
+ * A desktop path now holds a different file (an app saved it by writing a new file and renaming
+ * it over the old one, so NTFS gave it a new id). The new id takes over the old one's group
+ * membership, loose position and path, so the item keeps its place; `lastSeen` is dropped since
+ * the item is present. Same object back when `oldId` is unknown or the ids are equal.
+ */
+export function replaceItemId(layout: LayoutFile, oldId: string, newId: string): LayoutFile {
+  if (oldId === newId || !mentions(layout, new Set([oldId]))) return layout
+  // The old id's placement wins: any placement the new id already had is dropped first.
+  const cleared = forgetItemIds(layout, [newId])
+  const lastSeen = { ...cleared.lastSeen }
+  delete lastSeen[oldId]
+  return {
+    ...cleared,
+    displays: cleared.displays.map((display) => ({
+      ...display,
+      groups: display.groups.map((group) =>
+        group.items.includes(oldId)
+          ? { ...group, items: group.items.map((id) => (id === oldId ? newId : id)) }
+          : group
+      ),
+      loose: rekey(display.loose, oldId, newId)
+    })),
+    paths: rekey(cleared.paths, oldId, newId),
+    lastSeen
+  }
+}

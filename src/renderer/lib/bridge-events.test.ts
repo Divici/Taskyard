@@ -33,16 +33,17 @@ function targets(): BridgeEventTargets {
 }
 
 describe('subscribeBridgeEvents', () => {
-  it('feeds desktop:changed, desktop:renamed and desktop:icon into the items store', () => {
+  it('feeds desktop:icon into the items store, and leaves item changes to connectDesktop', () => {
     const bridge = createFakeBridge()
     const stores = targets()
+    stores.items.getState().hydrate([item])
     subscribeBridgeEvents(bridge, stores)
 
-    bridge.emit('desktop:changed', { added: [item], removed: [], changed: [] })
-    bridge.emit('desktop:renamed', { id: '1:2', path: 'C:\\Desktop\\b.md' })
+    // desktop:changed / desktop:renamed are ordered against desktop:list in desktop-sync.ts.
+    expect(bridge.listenerCount('desktop:changed')).toBe(0)
+    expect(bridge.listenerCount('desktop:renamed')).toBe(0)
     bridge.emit('desktop:icon', { id: '1:2', px: 64, dataUrl: 'data:image/png;base64,AA' })
 
-    expect(stores.items.getState().byId['1:2']).toMatchObject({ name: 'b', ext: '.md' })
     expect(stores.items.getState().icons['1:2']).toEqual({
       px: 64,
       dataUrl: 'data:image/png;base64,AA'

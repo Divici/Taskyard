@@ -121,8 +121,19 @@ describe('App', () => {
     )
   })
 
+  it('lists the desktop from main (desktop:list) and shows the item count on its main landmark', async () => {
+    const bridge = installFakeBridge(createFakeBridge({ items: [item] }))
+    await renderApp(bridge)
+
+    await waitFor(() => expect(useItemsStore.getState().hydrated).toBe(true))
+    expect(useItemsStore.getState().byId['3:4']).toEqual(item)
+    expect(bridge.desktop.list).toHaveBeenCalledOnce()
+    await waitFor(() => expect(screen.getByRole('main')).toHaveAttribute('data-desktop-items', '1'))
+  })
+
   it('feeds the desktop events into the items store', async () => {
     const bridge = await renderApp()
+    await waitFor(() => expect(useItemsStore.getState().hydrated).toBe(true))
 
     act(() => {
       bridge.emit('desktop:changed', { added: [item], removed: [], changed: [] })

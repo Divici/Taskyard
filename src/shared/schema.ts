@@ -29,8 +29,16 @@ export const DesktopItemSchema = z.object({
   sizeBytes: z.number().int().nonnegative(),
   readonly: z.boolean(),
   placeholder: z.boolean(),
+  /** Shortcut target (`.lnk`), as recorded in the link; never touched to find it. */
   targetPath: z.string().optional(),
-  url: z.string().optional()
+  /** The target is on the network (UNC, or a mapped drive): never extract icons from it. */
+  targetRemote: z.boolean().optional(),
+  /** `.url` address. */
+  url: z.string().optional(),
+  /** Icon file named by the shortcut (IconLocation / IconFile), environment expanded. */
+  iconPath: z.string().optional(),
+  /** Icon index in `iconPath` (or the target); negative = resource id. */
+  iconIndex: z.number().int().optional()
 })
 
 // ---------------------------------------------------------------------------------------------

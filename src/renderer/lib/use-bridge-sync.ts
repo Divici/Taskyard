@@ -3,13 +3,14 @@ import { hydrateStores } from '../stores/hydrate'
 import { useUiStore } from '../stores/ui'
 import { getBridge } from './bridge'
 import { subscribeBridgeEvents } from './bridge-events'
+import { connectDesktop } from './desktop-sync'
 import { connectDisplay } from './display-sync'
 import { LOAD_FAILED_TOAST } from './storage-messages'
 
 /**
  * Connects the app's stores to main for the lifetime of the component: subscribes to the events
- * first (so nothing sent during hydration is missed), then hydrates from disk, and connects this
- * window to its display (which registers the display in the layout).
+ * first (so nothing sent during hydration is missed), then hydrates from disk, connects this
+ * window to its display (which registers the display in the layout) and lists the desktop.
  */
 export function useBridgeSync(): void {
   useEffect(() => {
@@ -23,8 +24,10 @@ export function useBridgeSync(): void {
     }
     const unsubscribe = subscribeBridgeEvents(api)
     const disconnectDisplay = connectDisplay(api, window.location.search)
+    const disconnectDesktop = connectDesktop(api)
     void hydrateStores(api)
     return () => {
+      disconnectDesktop()
       disconnectDisplay()
       unsubscribe()
     }

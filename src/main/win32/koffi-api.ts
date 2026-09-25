@@ -6,6 +6,17 @@ import {
   ERROR_PATH_NOT_FOUND,
   ERROR_SUCCESS,
   EVENT_SYSTEM_FOREGROUND,
+  FILE_ADD_FILE,
+  FILE_ATTRIBUTE_HIDDEN,
+  FILE_ATTRIBUTE_NORMAL,
+  FILE_DELETE_CHILD,
+  FILE_FLAG_BACKUP_SEMANTICS,
+  FILE_SHARE_DELETE,
+  FILE_SHARE_READ,
+  FILE_SHARE_WRITE,
+  INVALID_HANDLE_VALUE,
+  OPEN_EXISTING,
+  WIN32_ERROR_CODES,
   GW_HWNDNEXT,
   GW_HWNDPREV,
   HKEY_CURRENT_USER,
@@ -222,6 +233,39 @@ export function createKoffiWin32Api(
     getFileAttributes(path) {
       const attributes = b.GetFileAttributesW(toExtendedLengthPath(path))
       return attributes === INVALID_FILE_ATTRIBUTES ? null : attributes
+    },
+
+    canModifyFolder(dir) {
+      const handle = b.CreateFileW(
+        toExtendedLengthPath(dir),
+        FILE_ADD_FILE | FILE_DELETE_CHILD,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        null,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        null
+      )
+      if (Number(handle) === INVALID_HANDLE_VALUE) return false
+      b.CloseHandle(handle)
+      return true
+    },
+
+    moveFile(from, to) {
+      if (b.MoveFileExW(toExtendedLengthPath(from), toExtendedLengthPath(to), 0)) return
+      const errno = b.GetLastError()
+      const code = WIN32_ERROR_CODES[errno] ?? 'EIO'
+      throw Object.assign(
+        new Error(`${code}: MoveFileExW failed with Win32 error ${errno}, '${from}' -> '${to}'`),
+        { code, errno, syscall: 'MoveFileExW', path: from, dest: to }
+      )
+    },
+
+    setHidden(path, hidden) {
+      const extended = toExtendedLengthPath(path)
+      const current = b.GetFileAttributesW(extended)
+      if (current === INVALID_FILE_ATTRIBUTES) return false
+      const next = hidden ? current | FILE_ATTRIBUTE_HIDDEN : current & ~FILE_ATTRIBUTE_HIDDEN
+      return b.SetFileAttributesW(extended, next === 0 ? FILE_ATTRIBUTE_NORMAL : next >>> 0)
     },
 
     regGetString: (hive, key, value) => readRegistryString(b, HKEYS[hive], key, value),

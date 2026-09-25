@@ -125,6 +125,39 @@ describe('installQuitPath', () => {
     expect(desktop!.cancelQuit).not.toHaveBeenCalled()
   })
 
+  it('stops the desktop watcher at will-quit', () => {
+    const stopWatching = vi.fn(async () => {})
+    installQuitPath(app, { storage, desktop: () => desktop, log, stopWatching })
+
+    app.emit('before-quit', { preventDefault: () => {}, defaultPrevented: false })
+    expect(stopWatching).not.toHaveBeenCalled()
+    app.finishClosing()
+
+    expect(stopWatching).toHaveBeenCalledOnce()
+  })
+
+  it('logs a watcher that fails to stop (thrown or rejected) instead of throwing into Electron', async () => {
+    const stopWatching = vi.fn(() => {
+      throw new Error('EPERM')
+    })
+    installQuitPath(app, { storage, desktop: () => desktop, log, stopWatching })
+    expect(() => app.quit()).not.toThrow()
+    expect(log.error).toHaveBeenCalledWith(
+      'quit: stopping the desktop watcher failed',
+      expect.any(Error)
+    )
+    expect(desktop!.dispose).toHaveBeenCalledOnce()
+
+    const rejecting = vi.fn(async () => {
+      throw new Error('late')
+    })
+    app = new FakeApp()
+    installQuitPath(app, { storage, desktop: () => desktop, log, stopWatching: rejecting })
+    app.quit()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(log.error).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps the desktop windows guarded while the stores flush, and marks them only when the quit proceeds', async () => {
     storage.dirty = true
     install()

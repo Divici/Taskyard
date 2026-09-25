@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { lstat, rm } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import writeFileAtomic from 'write-file-atomic'
 import { emptyJournal } from '@shared/defaults'
 import type { ReadOnlyInfo, StorageRecovered } from '@shared/ipc'
@@ -16,6 +17,14 @@ const TRANSITIONS: Readonly<Record<MoveOpState, readonly MoveOpState[]>> = {
   copied: ['done', 'undone'],
   done: ['undone'],
   undone: []
+}
+
+/**
+ * Where a cross-volume move copies before its verified rename into `to`: a hidden temporary in
+ * the destination folder, named after the op, so replay can always find and delete it.
+ */
+export function partialPathFor(op: Pick<MoveOp, 'token' | 'to'>): string {
+  return join(dirname(op.to), `.taskyard-${op.token}.partial`)
 }
 
 export class JournalReadOnlyError extends Error {
@@ -49,6 +58,16 @@ function isClosed(op: MoveOp): boolean {
   return op.state === 'done' || op.state === 'undone'
 }
 
+/** The file id at `path`, or null when nothing is there. */
+async function idOf(path: string): Promise<string | null> {
+  try {
+    return await fileIdOf(path)
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return null
+    throw error
+  }
+}
+
 async function exists(path: string): Promise<boolean> {
   try {
     await lstat(path)
@@ -65,8 +84,12 @@ async function exists(path: string): Promise<boolean> {
  * resolves whatever a crash interrupted:
  * - `pending` → nothing to undo; the op is closed as `done` if the destination alone exists
  *   (an atomic rename completed), otherwise `undone`. The disk is never touched.
- * - `copied`  → source and destination are hashed: equal → the source is deleted (`done`);
- *   different → the destination is deleted and its file id reported (`undone`).
+ * - `copied`  → the copy was verified before this state was written. If `to` holds it (its id
+ *   is `toId`), `to` is never deleted: equal hashes → the source is deleted; different (the
+ *   source was partly deleted, or a side was edited) → both are kept; either way `done`. If
+ *   `to` is missing or holds another file, `to` is left alone and the op is `undone` (the
+ *   source is still there).
+ * Either way the op's temporary copy (`partialPathFor`), if a crash left one, is deleted.
  * Each resolution is written to ops.json before the next op is touched, and closed ops stay
  * journaled until `prune()`, which the boot step calls only once the layout no longer
  * references their ids, so a crash at any point still reports every removed id next boot.
@@ -176,6 +199,9 @@ export class OpsJournal {
         this.options.log.error(`ops: replaying ${op.token} failed`, error)
         continue
       }
+      // The only file a replay may remove besides the ones the resolution names: the op's own
+      // temporary copy (never the user's source or destination).
+      await rm(partialPathFor(op), { recursive: true, force: true })
       const closed: MoveOp = { ...op, state: resolution.state }
       if (resolution.removedId !== undefined) closed.toId = resolution.removedId
       // On disk before the next op is touched. A failure here aborts the replay (the boot step
@@ -186,12 +212,12 @@ export class OpsJournal {
     }
 
     // Every undone op whose destination is gone, including ones an earlier boot closed but
-    // never pruned. `copied` records toId; a destination that still exists was never removed.
+    // never pruned. `copied` records toId; a destination that still holds it was never removed.
     for (const op of this.ops) {
       if (op.state !== 'undone' || op.toId === undefined || report.removedIds.includes(op.toId)) {
         continue
       }
-      if (!(await exists(op.to))) report.removedIds.push(op.toId)
+      if ((await idOf(op.to)) !== op.toId) report.removedIds.push(op.toId)
     }
     return report
   }
@@ -217,12 +243,19 @@ export class OpsJournal {
       return { state: !fromExists && toExists ? 'done' : 'undone' }
     }
 
-    // copied: the destination was fully written; only the source delete may be missing.
-    if (!toExists) {
-      if (!fromExists) {
+    // copied: the copy was SHA-256 verified before `copied` was written (toId = its file id).
+    // If `to` holds that file, it is the complete copy and is never deleted: only the source
+    // delete may be missing. Anything else at `to` is not ours and is left alone.
+    const toIsOurCopy = toExists && op.toId !== undefined && (await idOf(op.to)) === op.toId
+    if (!toIsOurCopy) {
+      if (toExists) {
+        this.options.log.warn(
+          `ops: ${op.token}: ${op.to} is not the verified copy; left alone, ${op.from} kept`
+        )
+      } else if (!fromExists) {
         this.options.log.error(`ops: ${op.token} has neither ${op.from} nor ${op.to}`)
       }
-      // A rollback deleted `to` and the app died before ops.json changed: still report its id.
+      // The copy never reached `to` (its partial is deleted by the caller): report its id.
       return { state: 'undone', removedId: op.toId }
     }
     if (!fromExists) return { state: 'done' }
@@ -231,13 +264,13 @@ export class OpsJournal {
     if (fromHash === toHash) {
       await rm(op.from, { recursive: true })
       this.options.log.info(`ops: finished ${op.token} (hashes match)`)
-      return { state: 'done' }
+    } else {
+      // The source was partly deleted, or one side was edited since: keep both.
+      this.options.log.warn(
+        `ops: ${op.token}: ${op.from} no longer matches the moved copy; both kept`
+      )
     }
-
-    const removedId = op.toId ?? (await fileIdOf(op.to))
-    await rm(op.to, { recursive: true })
-    this.options.log.warn(`ops: rolled back ${op.token} (hash mismatch); kept ${op.from}`)
-    return { state: 'undone', removedId }
+    return { state: 'done' }
   }
 
   private assertWritable(): void {

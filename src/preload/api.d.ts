@@ -1,5 +1,10 @@
+import type { DesktopItem } from '@shared/schema'
 import type {
+  DesktopActionResult,
   DisplayInfo,
+  MoveToDesktopResult,
+  RenameResult,
+  UndoMoveResult,
   IpcEventName,
   IpcEvents,
   SaveRequest,
@@ -41,6 +46,24 @@ export interface TaskyardApi {
     /** This window's display (id from its URL): bounds, work area, scale factor; null if unknown. */
     get(id: number): Promise<DisplayInfo | null>
     list(): Promise<DisplayInfo[]>
+  }
+
+  /** The desktop folders' items and the file operations on them (main: src/main/desktop). */
+  desktop: {
+    /** Every item main knows (waits for the boot scan). */
+    list(): Promise<DesktopItem[]>
+    /** `.url` → browser; anything else → its default app. */
+    open(id: string): Promise<DesktopActionResult>
+    showInFolder(id: string): Promise<DesktopActionResult>
+    /** `newName` is a file name (with extension); never replaces a file. Refused when readonly. */
+    rename(id: string, newName: string): Promise<RenameResult>
+    /** To the Recycle Bin; refused when readonly. */
+    trash(id: string): Promise<DesktopActionResult>
+    /** Explorer drop: moves into the user's Desktop (journaled, verified); one outcome per path. */
+    moveToDesktop(paths: string[]): Promise<MoveToDesktopResult>
+    undoMove(token: string): Promise<UndoMoveResult>
+    /** Scans again; the full list arrives as desktop:changed. */
+    rescan(): Promise<void>
   }
 
   /** Subscribes to a main → renderer event; returns the unsubscribe. */
