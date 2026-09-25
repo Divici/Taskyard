@@ -1,5 +1,5 @@
 import { existsSync, renameSync, statSync } from 'node:fs'
-import { FILE_ATTRIBUTE_HIDDEN } from './constants'
+import { DRIVE_FIXED, FILE_ATTRIBUTE_HIDDEN } from './constants'
 import type {
   Hwnd,
   IconBitmap,
@@ -55,6 +55,8 @@ export interface FakeWin32Api extends Win32Api {
   setRegistryString(hive: RegistryHive, key: string, value: string, data: string): void
   setWallpaper(rectPx: PixelRect, wallpaper: MonitorWallpaper): void
   setIcon(file: string, index: number, px: number, icon: IconBitmap): void
+  /** What `getDriveType(root)` answers (`DRIVE_FIXED` unless told otherwise). */
+  setDriveType(root: string, type: number): void
 }
 
 export interface FakeWin32ApiOptions {
@@ -80,6 +82,7 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
   const registry = new Map<string, string>()
   const wallpapers = new Map<string, MonitorWallpaper>()
   const icons = new Map<string, IconBitmap>()
+  const driveTypes = new Map<string, number>()
 
   const record = (method: keyof Win32Api, args: unknown[]): void => {
     calls.push({ method, args })
@@ -156,6 +159,7 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
     setRegistryString: (hive, key, value, data) => registry.set(keyOf(hive, key, value), data),
     setWallpaper: (rect, wallpaper) => wallpapers.set(rectKey(rect), wallpaper),
     setIcon: (file, index, px, icon) => icons.set(keyOf(file, index, px), icon),
+    setDriveType: (root, type) => driveTypes.set(keyOf(root), type),
 
     seatAboveShell(hwnd) {
       record('seatAboveShell', [hwnd])
@@ -239,6 +243,10 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
     getWallpaperForMonitor(rectPx) {
       record('getWallpaperForMonitor', [rectPx])
       return wallpapers.get(rectKey(rectPx)) ?? null
+    },
+    getDriveType(root) {
+      record('getDriveType', [root])
+      return driveTypes.get(keyOf(root)) ?? DRIVE_FIXED
     },
     extractIcon(file, index, px) {
       record('extractIcon', [file, index, px])

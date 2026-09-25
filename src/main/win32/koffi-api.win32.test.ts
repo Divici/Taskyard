@@ -367,12 +367,6 @@ describe.runIf(realWin32TestsEnabled())('createKoffiWin32Api (real Win32)', () =
     expect(api.setHidden(join(tmp, 'missing.txt'), true)).toBe(false)
   })
 
-  it('declares the Phase 5 call but refuses it until then', () => {
-    expect(() => api.extractIcon('C:\\Windows\\notepad.exe', 0, 64)).toThrow(
-      'extractIcon is not implemented until Phase 5'
-    )
-  })
-
   it('reads the wallpaper of the monitor at (0, 0) through IDesktopWallpaper (Phase 6)', () => {
     // A 1×1 rect inside the primary monitor matches it by overlap.
     const wallpaper = api.getWallpaperForMonitor({ x: 0, y: 0, width: 1, height: 1 })

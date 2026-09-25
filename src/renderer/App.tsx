@@ -1,6 +1,7 @@
 import { APP_NAME } from '@shared/app-info'
 import type { Rect } from '@shared/schema'
 import { WallpaperLayer } from './components/canvas/WallpaperLayer'
+import { LooseItemsGrid } from './components/desktop/LooseItemsGrid'
 import { ReadOnlyBanner } from './components/feedback/ReadOnlyBanner'
 import { Toaster } from './components/feedback/Toaster'
 import { useBridgeSync } from './lib/use-bridge-sync'
@@ -33,12 +34,14 @@ export default function App(): React.JSX.Element {
         data-scale-factor={info?.scaleFactor}
         data-peeking={peeking}
         data-desktop-items={itemCount}
-        className="flex h-screen flex-col items-center justify-center select-none"
+        className="relative h-screen overflow-hidden select-none"
       >
-        {/* Placeholder until the canvas (Phase 7): one glass pane over the wallpaper. */}
-        <div className="glass flex flex-col items-center gap-2 px-10 py-8">
-          <h1 className="text-3xl font-semibold tracking-tight">{APP_NAME}</h1>
-          <p className="text-sm text-text-secondary">Your desktop, organized.</p>
+        {/* Phase 5 stand-in over the wallpaper: every item with its icon. Phase 7 replaces it
+            with the canvas. */}
+        <LooseItemsGrid />
+        {/* Phase 6's glass placeholder, shrunk to a label so the items stay visible. */}
+        <div className="glass pointer-events-none absolute right-4 bottom-3 px-4 py-2">
+          <h1 className="text-sm font-semibold tracking-tight">{APP_NAME}</h1>
         </div>
       </main>
       <Toaster />

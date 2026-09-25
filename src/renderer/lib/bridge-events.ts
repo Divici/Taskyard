@@ -49,8 +49,8 @@ export function subscribeBridgeEvents(
   targets: BridgeEventTargets = APP_EVENT_TARGETS
 ): () => void {
   const unsubscribers = [
-    api.on('desktop:icon', ({ id, px, dataUrl }) =>
-      targets.items.getState().setIcon(id, px, dataUrl)
+    api.on('desktop:icon', ({ id, px, dataUrl, version }) =>
+      targets.items.getState().setIcon(id, px, dataUrl, version)
     ),
     api.on('storage:recovered', (info) => {
       targets.ui.getState().pushToast(recoveryToast(info))

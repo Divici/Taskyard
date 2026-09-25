@@ -1,3 +1,4 @@
+import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   app,
@@ -5,6 +6,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeImage,
   nativeTheme,
   powerMonitor,
   protocol,
@@ -13,6 +15,7 @@ import {
 } from 'electron'
 import log from 'electron-log/main'
 import { APP_ID, APP_NAME } from '@shared/app-info'
+import type { DesktopIcon } from '@shared/ipc'
 import { boot, STOP_BOOT } from './app/boot'
 import { applyUserDataOverride, ENV, resolveLogLevel } from './app/env'
 import { configureLogger, defaultLogDir, LOG_FILE_NAME } from './app/logger'
@@ -32,6 +35,7 @@ import {
   watchThemesFolder,
   type WallpaperService
 } from './desktop/wallpaper-service'
+import { createIconService, type IconService } from './desktop/icon-service'
 import type { IpcEventEmitter } from './ipc/events'
 import { registerIpcHandlers } from './ipc/handlers'
 import { createSenderGuard } from './ipc/sender-guard'
@@ -39,6 +43,7 @@ import { replayJournal } from './storage/journal-replay'
 import { createStorage } from './storage/stores'
 import { createWin32Api } from './win32'
 import type { Win32Api } from './win32/api'
+import { iconBitmapToPng } from './win32/icon-bitmap'
 import type { RendererSource } from './windows/desktop-window'
 import {
   createDesktopWindowManager,
@@ -121,6 +126,8 @@ function startPrimaryInstance(): void {
   // windows do, so it is created in the scan step; desktop:* requests wait for it.
   const desktopDirs = resolveDesktopDirs({ env: process.env, userDesktop: app.getPath('desktop') })
   let desktopFiles: DesktopService | null = null
+  // Phase 5: icons for the desktop items, streamed as desktop:icon (created with the service).
+  let stopIcons: () => void = () => {}
   let desktopFilesReady: (service: DesktopService) => void = () => {}
   const desktopFilesPromise = new Promise<DesktopService>(
     (resolve) => (desktopFilesReady = resolve)
@@ -148,6 +155,7 @@ function startPrimaryInstance(): void {
     log,
     stopWatching: async () => {
       theme?.stop()
+      stopIcons()
       await Promise.all([desktopFiles?.stop(), wallpaper?.stop()])
     }
   })
@@ -202,6 +210,8 @@ function startPrimaryInstance(): void {
       scan: async () => {
         const selection = await win32
         if (selection.kind === 'unavailable') return STOP_BOOT
+        const icons = startIcons(selection.api, (event, payload) => events.emit(event, payload))
+        stopIcons = icons.stop
         desktopFiles = createDesktopService({
           dirs: desktopDirs,
           win32: selection.api,
@@ -216,10 +226,12 @@ function startPrimaryInstance(): void {
           layout: storage.layout,
           emit: (event, payload) => events.emit(event, payload),
           env: process.env,
-          log
+          log,
+          icons: icons.service
         })
         desktopFilesReady(desktopFiles)
         await desktopFiles.scan()
+        logIconBootPass(icons.service)
         return undefined
       },
       // Started after the scan, so the watcher's model is the scanned one.
@@ -251,6 +263,56 @@ function startPrimaryInstance(): void {
     wallpaperReady(service)
     return service
   }
+}
+
+/**
+ * Phase 5: the icon pipeline over Electron's 32 px icons, Win32 extraction and the disk cache in
+ * userData/icons. It follows the displays: a larger max scale factor re-extracts at the new size.
+ */
+function startIcons(
+  win32: Win32Api,
+  emit: (event: 'desktop:icon', payload: DesktopIcon) => unknown
+): { service: IconService; stop: () => void } {
+  const service = createIconService({
+    cacheDir: join(app.getPath('userData'), 'icons'),
+    fs: { readFile, writeFile, rename, mkdir, readdir, unlink, stat },
+    win32,
+    getFileIcon: async (path) => {
+      const image = await app.getFileIcon(path, { size: 'normal' })
+      if (image.isEmpty()) throw new Error('Electron returned an empty icon')
+      return image.toPNG()
+    },
+    encodePng: (icon) => iconBitmapToPng(icon, nativeImage),
+    scaleFactors: () => screen.getAllDisplays().map((display) => display.scaleFactor),
+    emit,
+    log,
+    systemRoot: process.env['SystemRoot'] ?? 'C:\\Windows'
+  })
+  const refresh = (): void => service.refreshScale()
+  screen.on('display-added', refresh)
+  screen.on('display-removed', refresh)
+  screen.on('display-metrics-changed', refresh)
+  const stop = (): void => {
+    screen.removeListener('display-added', refresh)
+    screen.removeListener('display-removed', refresh)
+    screen.removeListener('display-metrics-changed', refresh)
+    service.stop()
+  }
+  return { service, stop }
+}
+
+/** Logs the boot icon pass once it drains, then prunes icons of items gone since last time. */
+function logIconBootPass(service: IconService): void {
+  const started = performance.now()
+  void service.idle().then(async () => {
+    const { cached, shell: fetched, extracted, generic, failed } = service.stats()
+    const ms = Math.round(performance.now() - started)
+    log.info(
+      `icons: boot pass ${ms} ms at ${service.px} px (${cached} cached, ${fetched} from Electron, ` +
+        `${extracted} extracted, ${generic} generic, ${failed} failed)`
+    )
+    await service.prune()
+  })
 }
 
 function rendererSource(): RendererSource {

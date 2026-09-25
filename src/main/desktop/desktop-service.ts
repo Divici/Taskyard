@@ -1,6 +1,6 @@
 import { statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import type { DesktopChange, IpcEvents, SaveResultOf } from '@shared/ipc'
+import type { DesktopChange, DesktopIcon, IpcEvents, SaveResultOf } from '@shared/ipc'
 import { replaceItemId } from '@shared/layout-ids'
 import { renamePath } from '@shared/layout-mutations'
 import type { LayoutFile } from '@shared/schema'
@@ -27,6 +27,13 @@ export interface DesktopLog {
   error(message: string, ...details: unknown[]): void
 }
 
+/** The icon pipeline (Phase 5): told every change and rename, asked for the icons sent so far. */
+export interface DesktopIcons {
+  update(change: DesktopChange): void
+  renamed(id: string, path: string): void
+  list(): DesktopIcon[]
+}
+
 export interface DesktopServiceDeps {
   /** resolveDesktopDirs(): the user Desktop first, then the Public Desktop. */
   dirs: readonly string[]
@@ -42,6 +49,8 @@ export interface DesktopServiceDeps {
   env: Env
   log: DesktopLog
   startWatching?: StartWatching
+  /** Phase 5: the icon service (see icon-service.ts). */
+  icons?: DesktopIcons
 }
 
 export interface DesktopService extends DesktopIpcTarget {
@@ -61,6 +70,15 @@ export interface DesktopService extends DesktopIpcTarget {
  */
 export function createDesktopService(deps: DesktopServiceDeps): DesktopService {
   const { dirs, log } = deps
+  // Every change and rename also goes to the icon pipeline (Phase 5).
+  const emitChanged = (change: DesktopChange): void => {
+    deps.emit('desktop:changed', change)
+    deps.icons?.update(change)
+  }
+  const emitRenamed = (id: string, path: string): void => {
+    deps.emit('desktop:renamed', { id, path })
+    deps.icons?.renamed(id, path)
+  }
   const model = new DesktopModel()
   let folderStates: ScanFolder[] | null = null
   let watching: FsWatch | null = null
@@ -101,9 +119,9 @@ export function createDesktopService(deps: DesktopServiceDeps): DesktopService {
   }
 
   const sink: TrackerSink = {
-    changed: (change: DesktopChange) => deps.emit('desktop:changed', change),
+    changed: emitChanged,
     renamed: (id, path) => {
-      deps.emit('desktop:renamed', { id, path })
+      emitRenamed(id, path)
       updateLayout((layout) => renamePath(layout, id, path), `the new path of ${id}`)
     },
     pathsMoved: (moves) =>
@@ -175,7 +193,7 @@ export function createDesktopService(deps: DesktopServiceDeps): DesktopService {
       if (moves.size > 0) sink.pathsMoved(moves)
       model.replaceAll(report.items)
       markScanned()
-      deps.emit('desktop:changed', { added: report.items, removed: [], changed: [] })
+      emitChanged({ added: report.items, removed: [], changed: [] })
       return report
     },
 
@@ -185,6 +203,8 @@ export function createDesktopService(deps: DesktopServiceDeps): DesktopService {
     },
 
     rescan: () => tracker.rescan(),
+
+    icons: () => deps.icons?.list() ?? [],
 
     async watch() {
       if (stopped || watching !== null) return

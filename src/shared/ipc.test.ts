@@ -22,7 +22,8 @@ describe('IPC channel names', () => {
         trash: 'desktop:trash',
         moveToDesktop: 'desktop:moveToDesktop',
         undoMove: 'desktop:undoMove',
-        rescan: 'desktop:rescan'
+        rescan: 'desktop:rescan',
+        icons: 'desktop:icons'
       },
       theme: { get: 'theme:get' },
       wallpaper: { get: 'wallpaper:get' }

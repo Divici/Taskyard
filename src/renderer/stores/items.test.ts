@@ -31,18 +31,18 @@ describe('items store', () => {
 
   it('hydrate keeps icons that arrived early for listed items and drops the rest', () => {
     const store = createItemsStore()
-    store.getState().setIcon('1:1', 32, 'data:a')
-    store.getState().setIcon('9:9', 32, 'data:gone')
+    store.getState().setIcon('1:1', 32, 'data:a', 'v1')
+    store.getState().setIcon('9:9', 32, 'data:gone', 'v1')
 
     store.getState().hydrate([item('1:1')])
 
-    expect(store.getState().icons).toEqual({ '1:1': { px: 32, dataUrl: 'data:a' } })
+    expect(store.getState().icons).toEqual({ '1:1': { px: 32, dataUrl: 'data:a', version: 'v1' } })
   })
 
   it('applyChange adds, removes and updates items', () => {
     const store = createItemsStore()
     store.getState().hydrate([item('1:1'), item('1:2')])
-    store.getState().setIcon('1:2', 32, 'data:x')
+    store.getState().setIcon('1:2', 32, 'data:x', 'v1')
 
     store.getState().applyChange({
       added: [item('1:3')],
@@ -114,7 +114,7 @@ describe('items store', () => {
 
     // Renames and icons change no presence: no reconcile.
     store.getState().applyRenamed('1:2', 'C:\\Desktop\\b.txt')
-    store.getState().setIcon('1:2', 32, 'data:x')
+    store.getState().setIcon('1:2', 32, 'data:x', 'v1')
     expect(reconcile).toHaveBeenCalledTimes(2)
 
     unsubscribe()
@@ -144,18 +144,45 @@ describe('items store', () => {
     )
   })
 
-  it('setIcon(id, px, dataUrl) stores the icon and keeps the sharpest one', () => {
+  it('setIcon keeps the sharpest icon of one version', () => {
     const store = createItemsStore()
     store.getState().hydrate([item('1:1')])
 
-    store.getState().setIcon('1:1', 32, 'data:32')
-    expect(store.getState().icons['1:1']).toEqual({ px: 32, dataUrl: 'data:32' })
+    store.getState().setIcon('1:1', 32, 'data:32', 'v1')
+    expect(store.getState().icons['1:1']).toEqual({ px: 32, dataUrl: 'data:32', version: 'v1' })
 
-    store.getState().setIcon('1:1', 96, 'data:96')
-    store.getState().setIcon('1:1', 32, 'data:32-late')
-    expect(store.getState().icons['1:1']).toEqual({ px: 96, dataUrl: 'data:96' })
+    store.getState().setIcon('1:1', 96, 'data:96', 'v1')
+    store.getState().setIcon('1:1', 32, 'data:32-late', 'v1')
+    expect(store.getState().icons['1:1']).toEqual({ px: 96, dataUrl: 'data:96', version: 'v1' })
 
-    store.getState().setIcon('1:1', 96, 'data:96-new')
-    expect(store.getState().icons['1:1']).toEqual({ px: 96, dataUrl: 'data:96-new' })
+    store.getState().setIcon('1:1', 96, 'data:96-new', 'v1')
+    expect(store.getState().icons['1:1']).toEqual({ px: 96, dataUrl: 'data:96-new', version: 'v1' })
+  })
+
+  it('setIcon: an icon of another version replaces the old one, even when it is smaller', () => {
+    // An .exe renamed to .txt, or a .lnk retargeted from an exe to a pdf: main sends a new version.
+    const store = createItemsStore()
+    store.getState().hydrate([item('1:1')])
+    store.getState().setIcon('1:1', 96, 'data:exe-96', 'exe')
+
+    store.getState().setIcon('1:1', 32, 'data:txt-32', 'txt')
+
+    expect(store.getState().icons['1:1']).toEqual({
+      px: 32,
+      dataUrl: 'data:txt-32',
+      version: 'txt'
+    })
+  })
+
+  it('setIcon with no dataUrl clears the icon (the item turned placeholder or remote: generic)', () => {
+    const store = createItemsStore()
+    store.getState().hydrate([item('1:1')])
+    store.getState().setIcon('1:1', 96, 'data:96', 'v1')
+
+    store.getState().setIcon('1:1', 0, null, 'generic')
+
+    expect(store.getState().icons).toEqual({})
+    store.getState().setIcon('1:2', 0, null, 'generic') // nothing to clear: no error
+    expect(store.getState().icons).toEqual({})
   })
 })

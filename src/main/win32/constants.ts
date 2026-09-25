@@ -100,3 +100,10 @@ export const SPI_GETDESKWALLPAPER = 0x0073
 export const PROGMAN_CLASS = 'Progman'
 export const WORKERW_CLASS = 'WorkerW'
 export const DEFVIEW_CLASS = 'SHELLDLL_DefView'
+
+// GetDriveTypeW (Phase 5 review fix: icon sources on mapped network drives are never read).
+export const DRIVE_UNKNOWN = 0
+export const DRIVE_NO_ROOT_DIR = 1
+export const DRIVE_REMOVABLE = 2
+export const DRIVE_FIXED = 3
+export const DRIVE_REMOTE = 4

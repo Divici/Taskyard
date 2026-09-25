@@ -58,6 +58,7 @@ describe('createTaskyardApi', () => {
     await api.desktop.rescan()
     await api.theme.get()
     await api.wallpaper.get(2528732444)
+    await api.desktop.icons()
 
     expect(ipc.invoke.mock.calls).toEqual([
       ['storage:load', 'layout'],
@@ -76,7 +77,8 @@ describe('createTaskyardApi', () => {
       ['desktop:undoMove', 'token-1'],
       ['desktop:rescan'],
       ['theme:get'],
-      ['wallpaper:get', 2528732444]
+      ['wallpaper:get', 2528732444],
+      ['desktop:icons']
     ])
   })
 
@@ -123,7 +125,7 @@ describe('createTaskyardApi', () => {
     const offFirst = api.on('desktop:icon', first)
     api.on('desktop:icon', second)
     offFirst()
-    ipc.dispatch('desktop:icon', { id: '1:2', px: 64, dataUrl: 'data:' })
+    ipc.dispatch('desktop:icon', { id: '1:2', px: 64, dataUrl: 'data:', version: 'v1' })
 
     expect(first).not.toHaveBeenCalled()
     expect(second).toHaveBeenCalledOnce()

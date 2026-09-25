@@ -106,9 +106,15 @@ export interface DesktopRenamed {
 
 export interface DesktopIcon {
   id: string
-  /** Physical pixel size of the square icon. */
+  /** Physical pixel size of the square icon (0 with a null dataUrl). */
   px: number
-  dataUrl: string
+  /** A PNG data URL, or null: the item has no icon any more; show the generic one. */
+  dataUrl: string | null
+  /**
+   * Which version of the item's icon this is (its file, source and plan). A different version
+   * replaces the current icon whatever its size; the same version only ever gets sharper.
+   */
+  version: string
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -255,7 +261,9 @@ export const IPC = {
     trash: 'desktop:trash',
     moveToDesktop: 'desktop:moveToDesktop',
     undoMove: 'desktop:undoMove',
-    rescan: 'desktop:rescan'
+    rescan: 'desktop:rescan',
+    // Phase 5
+    icons: 'desktop:icons'
   },
   theme: { get: 'theme:get' },
   wallpaper: { get: 'wallpaper:get' }
@@ -294,6 +302,8 @@ export interface IpcRequests {
   'theme:get': { args: []; result: ThemeInfo }
   /** The display's wallpaper; null when main knows no display with that id. */
   'wallpaper:get': { args: [displayId: number]; result: WallpaperInfo | null }
+  /** Phase 5: the best icon main has sent so far for every item (a window that loads late). */
+  'desktop:icons': { args: []; result: DesktopIcon[] }
 }
 
 export type RequestChannel = keyof IpcRequests

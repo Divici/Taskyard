@@ -1,6 +1,7 @@
 import type { DesktopItem } from '@shared/schema'
 import type {
   DesktopActionResult,
+  DesktopIcon,
   DisplayInfo,
   MoveToDesktopResult,
   RenameResult,
@@ -66,6 +67,8 @@ export interface TaskyardApi {
     undoMove(token: string): Promise<UndoMoveResult>
     /** Scans again; the full list arrives as desktop:changed. */
     rescan(): Promise<void>
+    /** Every icon main has sent so far ({id, px, dataUrl}); later ones arrive as desktop:icon. */
+    icons(): Promise<DesktopIcon[]>
   }
 
   theme: {

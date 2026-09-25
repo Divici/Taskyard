@@ -12,7 +12,8 @@ function target(): { [K in keyof DesktopIpcTarget]: ReturnType<typeof vi.fn> } {
     rename: vi.fn(async () => ({ ok: true, path: 'C:\\D\\b.txt' })),
     trash: vi.fn(async () => ({ ok: true })),
     moveToDesktop: vi.fn(async () => ({ moves: [] })),
-    undoMove: vi.fn(async () => ({ ok: true, path: 'D:\\a.txt' }))
+    undoMove: vi.fn(async () => ({ ok: true, path: 'D:\\a.txt' })),
+    icons: vi.fn(() => [{ id: '1:2', px: 96, dataUrl: 'data:image/png;base64,AA' }])
   }
 }
 
@@ -56,6 +57,9 @@ describe('registerDesktopIpc', () => {
     await ipc.invoke(IPC.desktop.moveToDesktop, ['D:\\a.txt', '\\\\nas\\s\\b.txt'])
     await ipc.invoke(IPC.desktop.undoMove, 'token-1')
     await ipc.invoke(IPC.desktop.rescan)
+    await expect(ipc.invoke(IPC.desktop.icons)).resolves.toEqual([
+      { id: '1:2', px: 96, dataUrl: 'data:image/png;base64,AA' }
+    ])
 
     expect(service.rename).toHaveBeenCalledExactlyOnceWith('1:2', 'b.txt')
     expect(service.open).toHaveBeenCalledExactlyOnceWith('1:2')
@@ -85,7 +89,8 @@ describe('registerDesktopIpc', () => {
       [IPC.desktop.moveToDesktop, [['\\\\server\\share']]],
       [IPC.desktop.moveToDesktop, [['\\\\server\\share\\']]],
       [IPC.desktop.undoMove, ['']],
-      [IPC.desktop.list, ['x']]
+      [IPC.desktop.list, ['x']],
+      [IPC.desktop.icons, [1]]
     ]
 
     for (const [channel, args] of bad) {

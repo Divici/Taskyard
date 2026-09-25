@@ -110,6 +110,12 @@ export interface Win32Api {
    * monitor matches). Read only: Taskyard never changes the user's wallpaper.
    */
   getWallpaperForMonitor(rectPx: PixelRect): MonitorWallpaper | null
+  /**
+   * `GetDriveTypeW` of a drive root such as `Z:\` (`DRIVE_REMOTE` = 4 for a mapped network drive).
+   * Answers from the drive table without touching the drive (Phase 5: icon sources on network
+   * drives are never read).
+   */
+  getDriveType(root: string): number
   /** Icon `index` of `file` at `px`×`px`. Implemented in Phase 5. */
   extractIcon(file: string, index: number, px: number): IconBitmap | null
 }

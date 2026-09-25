@@ -131,6 +131,94 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByRole('main')).toHaveAttribute('data-desktop-items', '1'))
   })
 
+  it('shows every desktop item with the icon main sent (pulled, then streamed)', async () => {
+    const folder: DesktopItem = { ...item, id: '3:5', name: 'Projects', ext: '', kind: 'folder' }
+    const bridge = installFakeBridge(
+      createFakeBridge({
+        items: [item, folder],
+        icons: [{ id: '3:4', px: 32, dataUrl: 'data:image/png;base64,SMALL', version: 'v1' }]
+      })
+    )
+    await renderApp(bridge)
+
+    const budget = await screen.findByRole('listitem', { name: 'Budget' })
+    await waitFor(() =>
+      expect(budget.querySelector('img')).toHaveAttribute('src', 'data:image/png;base64,SMALL')
+    )
+    act(() =>
+      bridge.emit('desktop:icon', {
+        id: '3:4',
+        px: 96,
+        dataUrl: 'data:image/png;base64,BIG',
+        version: 'v1'
+      })
+    )
+
+    expect(budget.querySelector('img')).toHaveAttribute('src', 'data:image/png;base64,BIG')
+    expect(screen.getByRole('listitem', { name: 'Projects' }).querySelector('img')).toHaveAttribute(
+      'data-icon',
+      'generic'
+    )
+  })
+
+  it('drops a stale icon: a new version replaces it, a clear shows the generic icon', async () => {
+    const tool: DesktopItem = {
+      ...item,
+      id: '3:6',
+      path: 'C:\\Users\\me\\Desktop\\tool.exe',
+      name: 'tool',
+      ext: '.exe',
+      kind: 'app'
+    }
+    const link: DesktopItem = {
+      ...item,
+      id: '3:7',
+      path: 'C:\\Users\\me\\Desktop\\Report.lnk',
+      name: 'Report',
+      ext: '.lnk',
+      kind: 'link',
+      targetPath: 'C:\\apps\\report.exe'
+    }
+    const bridge = installFakeBridge(createFakeBridge({ items: [tool, link] }))
+    await renderApp(bridge)
+    const img = (name: string): HTMLElement | null =>
+      screen.getByRole('listitem', { name }).querySelector('img')
+    await screen.findByRole('listitem', { name: 'tool' })
+    act(() => {
+      bridge.emit('desktop:icon', { id: '3:6', px: 96, dataUrl: 'data:exe', version: 'exe' })
+      bridge.emit('desktop:icon', { id: '3:7', px: 96, dataUrl: 'data:app', version: 'lnk-1' })
+    })
+
+    // tool.exe renamed to tool.txt: main re-resolves and sends the text icon (32 px, new version).
+    act(() => {
+      bridge.emit('desktop:renamed', { id: '3:6', path: 'C:\\Users\\me\\Desktop\\tool.txt' })
+      bridge.emit('desktop:icon', { id: '3:6', px: 32, dataUrl: 'data:txt', version: 'txt' })
+    })
+    expect(img('tool')).toHaveAttribute('src', 'data:txt')
+
+    // Report.lnk retargeted from an exe to a pdf: the pdf icon (32 px) replaces the 96 px one.
+    act(() => {
+      bridge.emit('desktop:changed', {
+        added: [],
+        removed: [],
+        changed: [{ ...link, targetPath: 'C:\\docs\\report.pdf', mtimeMs: 2 }]
+      })
+      bridge.emit('desktop:icon', { id: '3:7', px: 32, dataUrl: 'data:pdf', version: 'lnk-2' })
+    })
+    expect(img('Report')).toHaveAttribute('src', 'data:pdf')
+
+    // The shortcut becomes a cloud placeholder: main clears its icon, the generic one shows.
+    act(() => {
+      bridge.emit('desktop:changed', {
+        added: [],
+        removed: [],
+        changed: [{ ...link, placeholder: true, mtimeMs: 3 }]
+      })
+      bridge.emit('desktop:icon', { id: '3:7', px: 0, dataUrl: null, version: 'generic' })
+    })
+    expect(img('Report')).toHaveAttribute('data-icon', 'generic')
+  })
+
   it('feeds the desktop events into the items store', async () => {
     const bridge = await renderApp()
     await waitFor(() => expect(useItemsStore.getState().hydrated).toBe(true))
@@ -141,13 +229,19 @@ describe('App', () => {
         id: '3:4',
         path: 'C:\\Users\\me\\Desktop\\Budget 2026.xlsx'
       })
-      bridge.emit('desktop:icon', { id: '3:4', px: 96, dataUrl: 'data:image/png;base64,AA' })
+      bridge.emit('desktop:icon', {
+        id: '3:4',
+        px: 96,
+        dataUrl: 'data:image/png;base64,AA',
+        version: 'v1'
+      })
     })
 
     expect(useItemsStore.getState().byId['3:4']).toMatchObject({ name: 'Budget 2026' })
     expect(useItemsStore.getState().icons['3:4']).toEqual({
       px: 96,
-      dataUrl: 'data:image/png;base64,AA'
+      dataUrl: 'data:image/png;base64,AA',
+      version: 'v1'
     })
   })
 

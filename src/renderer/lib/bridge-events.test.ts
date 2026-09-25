@@ -42,11 +42,17 @@ describe('subscribeBridgeEvents', () => {
     // desktop:changed / desktop:renamed are ordered against desktop:list in desktop-sync.ts.
     expect(bridge.listenerCount('desktop:changed')).toBe(0)
     expect(bridge.listenerCount('desktop:renamed')).toBe(0)
-    bridge.emit('desktop:icon', { id: '1:2', px: 64, dataUrl: 'data:image/png;base64,AA' })
+    bridge.emit('desktop:icon', {
+      id: '1:2',
+      px: 64,
+      dataUrl: 'data:image/png;base64,AA',
+      version: 'v1'
+    })
 
     expect(stores.items.getState().icons['1:2']).toEqual({
       px: 64,
-      dataUrl: 'data:image/png;base64,AA'
+      dataUrl: 'data:image/png;base64,AA',
+      version: 'v1'
     })
   })
 

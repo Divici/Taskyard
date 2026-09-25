@@ -50,6 +50,21 @@ export function connectDesktop(
     for (const event of pending) apply(event)
   }
 
+  // Icons main sent before this window listened (desktop:icon); later ones stream in. setIcon
+  // keeps the sharpest, so the order against streamed icons does not matter.
+  const pullIcons = (): void => {
+    api.desktop.icons().then(
+      (icons) => {
+        if (!connected) return
+        const items = targets.items.getState()
+        for (const { id, px, dataUrl, version } of icons) items.setIcon(id, px, dataUrl, version)
+      },
+      (error: unknown) => {
+        if (connected) console.error('desktop: fetching the icons failed', error)
+      }
+    )
+  }
+
   const unsubscribers = [
     api.on('desktop:changed', (change) => receive({ kind: 'changed', change })),
     api.on('desktop:renamed', (renamed) => receive({ kind: 'renamed', renamed }))
@@ -60,6 +75,7 @@ export function connectDesktop(
       if (!connected) return
       targets.items.getState().hydrate(list)
       release()
+      pullIcons()
     },
     (error: unknown) => {
       if (!connected) return

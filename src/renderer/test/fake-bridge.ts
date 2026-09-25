@@ -2,6 +2,7 @@ import { vi, type Mock } from 'vitest'
 import { defaultSettings, emptyLayout, emptyTasks } from '@shared/defaults'
 import type { DesktopItem } from '@shared/schema'
 import type {
+  DesktopIcon,
   DisplayInfo,
   IpcEventName,
   IpcEvents,
@@ -55,6 +56,8 @@ export interface FakeBridgeOptions {
   status?: StorageStatus
   /** What `desktop.list` answers (empty when omitted). */
   items?: DesktopItem[]
+  /** What `desktop.icons` answers (none when omitted). */
+  icons?: DesktopIcon[]
 }
 
 const PRIMARY: DisplayInfo = {
@@ -152,7 +155,8 @@ export function createFakeBridge(options: FakeBridgeOptions = {}): FakeBridge {
       trash: vi.fn(async () => ({ ok: true as const })),
       moveToDesktop: vi.fn(async () => ({ moves: [] })),
       undoMove: vi.fn(async () => ({ ok: true as const, path: '' })),
-      rescan: vi.fn(async () => {})
+      rescan: vi.fn(async () => {}),
+      icons: vi.fn(async () => structuredClone(options.icons ?? []))
     } as unknown as FakeBridge['desktop'],
     theme: {
       get: vi.fn(async () => ({ ...FAKE_THEME })) as FakeBridge['theme']['get']

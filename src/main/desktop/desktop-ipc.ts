@@ -1,6 +1,7 @@
 import { win32 } from 'node:path'
 import { z } from 'zod'
 import { IPC } from '@shared/ipc'
+import type { DesktopIcon } from '@shared/ipc'
 import { FileIdSchema, type DesktopItem } from '@shared/schema'
 import {
   handleTrusted,
@@ -15,6 +16,8 @@ import { isVolumeOrShareRoot, MAX_NAME_LENGTH } from './file-names'
 export interface DesktopIpcTarget extends FileOps {
   list(): Promise<DesktopItem[]>
   rescan(): Promise<void>
+  /** Phase 5: every icon sent so far (desktop:icon events a late window missed). */
+  icons(): DesktopIcon[]
 }
 
 /** Explorer drops at once; far above any real drop, small enough to bound the work. */
@@ -73,6 +76,7 @@ export function registerDesktopIpc(
   handle(IPC.desktop.trash, Args.id, (s, [id]) => s.trash(id))
   handle(IPC.desktop.moveToDesktop, Args.paths, (s, [paths]) => s.moveToDesktop(paths))
   handle(IPC.desktop.undoMove, Args.token, (s, [token]) => s.undoMove(token))
+  handle(IPC.desktop.icons, Args.none, (s) => s.icons())
 
   return () => {
     for (const channel of Object.values(IPC.desktop)) ipc.removeHandler(channel)

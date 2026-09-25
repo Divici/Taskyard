@@ -47,7 +47,8 @@ export function createTaskyardApi(
       trash: (id) => invoke(IPC.desktop.trash, id),
       moveToDesktop: (paths) => invoke(IPC.desktop.moveToDesktop, paths),
       undoMove: (token) => invoke(IPC.desktop.undoMove, token),
-      rescan: () => invoke(IPC.desktop.rescan)
+      rescan: () => invoke(IPC.desktop.rescan),
+      icons: () => invoke(IPC.desktop.icons)
     },
 
     theme: {

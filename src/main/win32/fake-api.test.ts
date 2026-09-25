@@ -175,6 +175,16 @@ describe('createFakeWin32Api', () => {
     expect(api.foregroundListenerCount()).toBe(0)
   })
 
+  it('answers drive types per drive root: fixed unless told otherwise (Phase 5 review fix)', () => {
+    const api = createFakeWin32Api()
+    expect(api.getDriveType('C:\\')).toBe(3)
+
+    api.setDriveType('z:\\', 4)
+
+    expect(api.getDriveType('Z:\\')).toBe(4)
+    expect(api.callsTo('getDriveType')).toEqual([['C:\\'], ['Z:\\']])
+  })
+
   it('answers file attributes, registry strings, wallpapers and icons from configured data', () => {
     const api = createFakeWin32Api()
 

@@ -6,6 +6,8 @@ import type { DesktopItem } from '@shared/schema'
 export interface ItemIcon {
   px: number
   dataUrl: string
+  /** Main's icon version (see `DesktopIcon.version`). */
+  version: string
 }
 
 /** Told the ids present on the desktop after every hydrate and applyChange. */
@@ -26,8 +28,12 @@ export interface ItemsState {
   applyChange(change: DesktopChange): void
   /** A rename keeps the id; path, name and extension follow the new path. */
   applyRenamed(id: string, path: string): void
-  /** Keeps the sharpest icon: a smaller size never replaces a larger one. */
-  setIcon(id: string, px: number, dataUrl: string): void
+  /**
+   * `desktop:icon`. Within one version a smaller size never replaces a larger one; another
+   * version always replaces the icon (renamed, retargeted); a null dataUrl clears it, so the
+   * generic icon shows (the item became a placeholder or remote, or has no icon any more).
+   */
+  setIcon(id: string, px: number, dataUrl: string | null, version: string): void
   /** Registers the reconcile hook (Phase 7); returns the unsubscribe. */
   onItemsChanged(listener: ItemsChangedListener): () => void
 }
@@ -79,11 +85,12 @@ export function createItemsStore(): UseBoundStore<StoreApi<ItemsState>> {
       })
     },
 
-    setIcon(id, px, dataUrl) {
+    setIcon(id, px, dataUrl, version) {
       set(({ icons }) => {
         const current = icons[id]
-        if (current && current.px > px) return {}
-        return { icons: { ...icons, [id]: { px, dataUrl } } }
+        if (dataUrl === null) return current ? { icons: pick(icons, (key) => key !== id) } : {}
+        if (current && current.version === version && current.px > px) return {}
+        return { icons: { ...icons, [id]: { px, dataUrl, version } } }
       })
     },
 

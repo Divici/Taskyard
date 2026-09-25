@@ -15,7 +15,11 @@ import type { DesktopChange, DesktopRenamed } from '@shared/ipc'
 import type { LayoutFile } from '@shared/schema'
 import { OpsJournal } from '../storage/ops-journal'
 import { createFakeWin32Api, type FakeWin32Api } from '../win32/fake-api'
-import { createDesktopService, type DesktopService } from './desktop-service'
+import {
+  createDesktopService,
+  type DesktopService,
+  type DesktopServiceDeps
+} from './desktop-service'
 
 let root: string
 let desktop: string
@@ -47,7 +51,7 @@ async function waitFor(check: () => boolean, timeoutMs = 5_000): Promise<void> {
   }
 }
 
-function create(): DesktopService {
+function create(extra: Partial<DesktopServiceDeps> = {}): DesktopService {
   return createDesktopService({
     dirs: [desktop, publicDesktop],
     win32,
@@ -64,7 +68,8 @@ function create(): DesktopService {
       return 1
     },
     env: {},
-    log
+    log,
+    ...extra
   })
 }
 
@@ -230,5 +235,29 @@ describe('desktop service', () => {
 
     expect(events('desktop:changed')).toHaveLength(1)
     await expect(service.stop()).resolves.toBeUndefined()
+  })
+  it('feeds every desktop:changed and desktop:renamed to the icon service and answers desktop:icons from it', async () => {
+    writeFileSync(join(desktop, 'a.txt'), '')
+    const id = idOf(join(desktop, 'a.txt'))
+    const sent = [{ id, px: 96, dataUrl: 'data:image/png;base64,AA', version: 'v1' }]
+    const icons = { update: vi.fn(), renamed: vi.fn(), list: vi.fn(() => sent) }
+    service = create({ icons })
+
+    const report = await service.scan()
+    expect(await service.rename(id, 'b.txt')).toEqual({ ok: true, path: join(desktop, 'b.txt') })
+    await service.trash(id)
+
+    expect(icons.update.mock.calls).toEqual(
+      events<DesktopChange>('desktop:changed').map((change) => [change])
+    )
+    expect(icons.update.mock.calls[0]).toEqual([{ added: report.items, removed: [], changed: [] }])
+    expect(icons.update).toHaveBeenLastCalledWith({ added: [], removed: [id], changed: [] })
+    expect(icons.renamed).toHaveBeenCalledExactlyOnceWith(id, join(desktop, 'b.txt'))
+    expect(service.icons()).toEqual(sent)
+  })
+
+  it('answers desktop:icons with nothing when there is no icon service', async () => {
+    service = create()
+    expect(service.icons()).toEqual([])
   })
 })

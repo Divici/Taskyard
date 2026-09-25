@@ -36,6 +36,7 @@ import {
   WM_SYSCOMMAND,
   WM_WINDOWPOSCHANGING
 } from './constants'
+import { extractIconWith, loadIconBindings, type IconBindings } from './extract-icon'
 import { toExtendedLengthPath } from './long-path'
 import { resolveShellWindow, type WindowTree } from './shell-window'
 import {
@@ -65,6 +66,8 @@ export interface KoffiWin32ApiOptions {
   bindings?: Win32Bindings
   /** Phase 6: injected in headless tests; IDesktopWallpaper over COM (wallpaper.ts) otherwise. */
   wallpaper?: (rectPx: PixelRect) => ReturnType<Win32Api['getWallpaperForMonitor']>
+  /** Phase 5 icon extraction calls; injected in headless tests, loaded on first use otherwise. */
+  iconBindings?: IconBindings
 }
 
 /** `uIdSubclass` for Taskyard's guard ('Ty'); one guard per window. */
@@ -83,6 +86,7 @@ interface Guard {
 /** `Win32Api` over real user32/comctl32/advapi32/kernel32 calls through koffi. */
 export function createKoffiWin32Api(koffi: Koffi, options: KoffiWin32ApiOptions): Win32Api {
   const { log, bindings } = options
+  let iconBindings = options.iconBindings
   const b = bindings ?? loadWin32Bindings(koffi)
   let wallpaper = options.wallpaper
   const guards = new Map<Hwnd, Guard>()
@@ -282,8 +286,15 @@ export function createKoffiWin32Api(koffi: Koffi, options: KoffiWin32ApiOptions)
     // Phase 6: wallpaper (read only).
     getWallpaperForMonitor: (rectPx) => (wallpaper ??= wallpaperReader(koffi, b, log))(rectPx),
 
-    extractIcon() {
-      throw new Error('extractIcon is not implemented until Phase 5')
+    // Phase 5: user32/gdi32 icon extraction and the drive type (src/main/win32/extract-icon.ts).
+    getDriveType(root) {
+      iconBindings ??= loadIconBindings(koffi)
+      return iconBindings.GetDriveTypeW(root)
+    },
+
+    extractIcon(file, index, px) {
+      iconBindings ??= loadIconBindings(koffi)
+      return extractIconWith(iconBindings, file, index, px)
     }
   }
 }
