@@ -60,9 +60,10 @@ test('a corrupt layout.json is quarantined, restored from .bak and announced wit
     const app = await launchTaskyard(profile)
     const page = await app.firstWindow()
 
-    await expect(page.getByRole('status')).toContainText(
-      'Taskyard couldn’t read your desktop layout, so it restored the last backup.'
-    )
+    // dnd-kit's drag announcements are a status region too (Phase 8): the toasts' one is meant.
+    await expect(
+      page.getByRole('region', { name: 'Notifications' }).getByRole('status')
+    ).toContainText('Taskyard couldn’t read your desktop layout, so it restored the last backup.')
     // The restored backup is what the windows start from; each then registers its own display.
     const displayCount = await app.evaluate(({ screen }) => screen.getAllDisplays().length)
     const loadLayout = (): Promise<{ revision: number; data: typeof backup }> =>

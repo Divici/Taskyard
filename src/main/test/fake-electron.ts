@@ -62,6 +62,21 @@ export class FakeWebContents extends EventEmitter {
     return ignored
   }
 
+  /** The page tries to navigate (Electron's `will-navigate`); true when a listener prevented it. */
+  tryToNavigate(url: string): boolean {
+    let prevented = false
+    this.emit(
+      'will-navigate',
+      {
+        preventDefault: () => {
+          prevented = true
+        }
+      },
+      url
+    )
+    return prevented
+  }
+
   /** Emits `before-input-event` for a key press; true when a listener prevented it. */
   pressKey(input: Partial<KeyInput> & { key: string }): boolean {
     let prevented = false

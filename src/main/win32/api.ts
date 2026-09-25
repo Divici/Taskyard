@@ -84,6 +84,19 @@ export interface Win32Api {
    * Empty when `upper` is not above `lower`. Explorer restores windows here after Win+D.
    */
   visibleWindowsBetween(upper: Hwnd, lower: Hwnd): Hwnd[]
+  /**
+   * The top-level window under the mouse cursor (`GetCursorPos` → `WindowFromPoint` →
+   * `GetAncestor(GA_ROOT)`), or null. Phase 8: an item drag hands over to the OS drag when the
+   * cursor is over another app's window (which sits above the desktop window).
+   */
+  rootWindowAtCursor(): Hwnd | null
+  /**
+   * Whether the primary mouse button is physically down now (`GetAsyncKeyState` of the left
+   * button, or the right one when `SM_SWAPBUTTON` swaps them). Phase 8: the OS drag only starts
+   * while it is — never from touch, pen or synthetic input, where Windows' drag loop would drop
+   * at once wherever the cursor happens to be.
+   */
+  isPrimaryButtonDown(): boolean
   /** `GetFileAttributesW` on the `\\?\` form of `path`; null when the path cannot be read. */
   getFileAttributes(path: string): number | null
   /**

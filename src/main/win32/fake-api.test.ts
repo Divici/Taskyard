@@ -175,6 +175,25 @@ describe('createFakeWin32Api', () => {
     expect(api.foregroundListenerCount()).toBe(0)
   })
 
+  it('answers the window under the cursor as told (none until then; Phase 8)', () => {
+    const api = createFakeWin32Api()
+    expect(api.rootWindowAtCursor()).toBeNull()
+
+    api.setWindowAtCursor(FAKE_APP_WINDOW)
+
+    expect(api.rootWindowAtCursor()).toBe(FAKE_APP_WINDOW)
+    expect(api.callsTo('rootWindowAtCursor')).toEqual([[], []])
+  })
+
+  it('answers whether the primary mouse button is down as told (up until then; Phase 8)', () => {
+    const api = createFakeWin32Api()
+    expect(api.isPrimaryButtonDown()).toBe(false)
+
+    api.setPrimaryButtonDown(true)
+
+    expect(api.isPrimaryButtonDown()).toBe(true)
+  })
+
   it('answers drive types per drive root: fixed unless told otherwise (Phase 5 review fix)', () => {
     const api = createFakeWin32Api()
     expect(api.getDriveType('C:\\')).toBe(3)

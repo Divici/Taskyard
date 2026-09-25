@@ -191,3 +191,32 @@ describe('ui store — canvas state', () => {
     await expect(second).resolves.toBe(false)
   })
 })
+
+describe('ui store — drag and drop (Phase 8)', () => {
+  it('tracks the item drag and the drop hint, notifying only on a real change', () => {
+    const store = createUiStore()
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    store
+      .getState()
+      .setDrag({ ids: ['1:1', '1:2'], activeId: '1:2', sourceGroups: ['a'], pointer: true })
+    expect(store.getState().drag).toEqual({
+      ids: ['1:1', '1:2'],
+      activeId: '1:2',
+      sourceGroups: ['a'],
+      pointer: true
+    })
+
+    store.getState().setDropHint({ kind: 'group', groupId: 'a', index: 2 })
+    store.getState().setDropHint({ kind: 'group', groupId: 'a', index: 2 })
+    store.getState().setDropHint({ kind: 'canvas', point: { x: 96, y: 0 } })
+    store.getState().setDropHint({ kind: 'canvas', point: { x: 96, y: 0 } })
+    expect(store.getState().dropHint).toEqual({ kind: 'canvas', point: { x: 96, y: 0 } })
+    expect(listener).toHaveBeenCalledTimes(3)
+
+    store.getState().endDrag()
+    expect(store.getState().drag).toBeNull()
+    expect(store.getState().dropHint).toBeNull()
+  })
+})

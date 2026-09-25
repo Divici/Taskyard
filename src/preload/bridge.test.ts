@@ -59,6 +59,8 @@ describe('createTaskyardApi', () => {
     await api.theme.get()
     await api.wallpaper.get(2528732444)
     await api.desktop.icons()
+    await api.desktop.startDrag(['1:2', '1:3'])
+    await api.desktop.cursorOverOtherWindow()
 
     expect(ipc.invoke.mock.calls).toEqual([
       ['storage:load', 'layout'],
@@ -78,8 +80,19 @@ describe('createTaskyardApi', () => {
       ['desktop:rescan'],
       ['theme:get'],
       ['wallpaper:get', 2528732444],
-      ['desktop:icons']
+      ['desktop:icons'],
+      ['desktop:startDrag', ['1:2', '1:3']],
+      ['desktop:cursorOverOtherWindow']
     ])
+  })
+
+  it('resolves a dropped File to its path with webUtils (Phase 8 Explorer drop)', () => {
+    const getPathForFile = vi.fn(() => 'D:\\Photos\\a.jpg')
+    const api = createTaskyardApi(fakeIpcRenderer(), versions, { getPathForFile })
+    const file = new File(['x'], 'a.jpg')
+
+    expect(api.desktop.pathForFile(file)).toBe('D:\\Photos\\a.jpg')
+    expect(getPathForFile).toHaveBeenCalledExactlyOnceWith(file)
   })
 
   it('returns what main returned', async () => {

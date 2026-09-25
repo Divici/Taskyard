@@ -1,7 +1,9 @@
 import { APP_NAME } from '@shared/app-info'
+import { useEffect } from 'react'
 import type { Rect } from '@shared/schema'
 import { DesktopCanvas } from './components/canvas/DesktopCanvas'
 import { WallpaperLayer } from './components/canvas/WallpaperLayer'
+import { installFileDropGuard } from './components/dnd/file-drop-guard'
 import { ConfirmHost } from './components/feedback/ConfirmDialog'
 import { ReadOnlyBanner } from './components/feedback/ReadOnlyBanner'
 import { Toaster } from './components/feedback/Toaster'
@@ -15,6 +17,8 @@ export default function App(): React.JSX.Element {
   // Hydrates settings/layout/tasks from main, connects this window to its display and subscribes
   // the stores to main's events for as long as the app is mounted.
   useBridgeSync()
+  // Phase 8: a file dropped anywhere but the canvas must never open in (and so replace) the page.
+  useEffect(() => installFileDropGuard(window), [])
   const displayId = useDisplayStore((state) => state.displayId)
   const info = useDisplayStore((state) => state.info)
   const peeking = useDisplayStore((state) => state.peeking)

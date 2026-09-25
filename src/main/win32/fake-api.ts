@@ -57,6 +57,10 @@ export interface FakeWin32Api extends Win32Api {
   setIcon(file: string, index: number, px: number, icon: IconBitmap): void
   /** What `getDriveType(root)` answers (`DRIVE_FIXED` unless told otherwise). */
   setDriveType(root: string, type: number): void
+  /** What `rootWindowAtCursor()` answers (null until told). */
+  setWindowAtCursor(hwnd: Hwnd | null): void
+  /** What `isPrimaryButtonDown()` answers (up until told). */
+  setPrimaryButtonDown(down: boolean): void
 }
 
 export interface FakeWin32ApiOptions {
@@ -83,6 +87,8 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
   const wallpapers = new Map<string, MonitorWallpaper>()
   const icons = new Map<string, IconBitmap>()
   const driveTypes = new Map<string, number>()
+  let windowAtCursor: Hwnd | null = null
+  let primaryButtonDown = false
 
   const record = (method: keyof Win32Api, args: unknown[]): void => {
     calls.push({ method, args })
@@ -160,6 +166,12 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
     setWallpaper: (rect, wallpaper) => wallpapers.set(rectKey(rect), wallpaper),
     setIcon: (file, index, px, icon) => icons.set(keyOf(file, index, px), icon),
     setDriveType: (root, type) => driveTypes.set(keyOf(root), type),
+    setWindowAtCursor: (hwnd) => {
+      windowAtCursor = hwnd
+    },
+    setPrimaryButtonDown: (down) => {
+      primaryButtonDown = down
+    },
 
     seatAboveShell(hwnd) {
       record('seatAboveShell', [hwnd])
@@ -243,6 +255,14 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
     getWallpaperForMonitor(rectPx) {
       record('getWallpaperForMonitor', [rectPx])
       return wallpapers.get(rectKey(rectPx)) ?? null
+    },
+    rootWindowAtCursor() {
+      record('rootWindowAtCursor', [])
+      return windowAtCursor
+    },
+    isPrimaryButtonDown() {
+      record('isPrimaryButtonDown', [])
+      return primaryButtonDown
     },
     getDriveType(root) {
       record('getDriveType', [root])

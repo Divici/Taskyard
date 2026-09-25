@@ -20,6 +20,13 @@ export const SW_SHOWNOACTIVATE = 4
 
 // GetWindow commands.
 export const GW_HWNDNEXT = 2
+/** GetAncestor: the root window (walks the parent chain, not the owner). */
+export const GA_ROOT = 2
+/** GetSystemMetrics: non-zero when the left and right mouse buttons are swapped. */
+export const SM_SWAPBUTTON = 23
+/** Virtual keys of the physical left and right mouse buttons (GetAsyncKeyState). */
+export const VK_LBUTTON = 0x01
+export const VK_RBUTTON = 0x02
 export const GW_HWNDPREV = 3
 
 // Window long indices and extended styles.

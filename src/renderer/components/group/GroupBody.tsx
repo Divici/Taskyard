@@ -3,6 +3,37 @@ import type { DesktopItem, Group } from '@shared/schema'
 import { gridNeighbor } from '../../lib/keyboard'
 import { DesktopIcon } from '../icon/DesktopIcon'
 import { useItemList } from '../icon/useItemList'
+import { useUiStore } from '../../stores/ui'
+
+/**
+ * Where a drop would insert: a bar at the left edge of the cell at `index` (in a `manual` group).
+ * In the scrolling grid, so it scrolls with the icons; inside the group's box (a `.glass` clips
+ * anything outside it).
+ */
+function DropIndicator({
+  index,
+  columns,
+  cellHeight
+}: {
+  index: number
+  columns: number
+  cellHeight: number
+}): React.JSX.Element {
+  const column = index % columns
+  const row = Math.floor(index / columns)
+  return (
+    <span
+      data-drop-indicator={index}
+      aria-hidden="true"
+      className="pointer-events-none absolute w-0.5 rounded-full bg-accent-1 shadow-[0_0_6px_var(--color-accent-1)]"
+      style={{
+        left: `calc(${GROUP_BODY_PADDING}px + (100% - ${2 * GROUP_BODY_PADDING}px) * ${column} / ${columns} - 1px)`,
+        top: GROUP_BODY_PADDING + row * cellHeight + 4,
+        height: cellHeight - 8
+      }}
+    />
+  )
+}
 
 export interface GroupBodyProps {
   group: Pick<Group, 'id' | 'title'>
@@ -12,6 +43,8 @@ export interface GroupBodyProps {
   width: number
   iconSize: IconSize
   showExtension: boolean
+  /** Phase 8: the rendered grid, where drops read their insert index from. */
+  bodyRef?: React.Ref<HTMLDivElement>
 }
 
 /**
@@ -24,10 +57,22 @@ export function GroupBody({
   items,
   width,
   iconSize,
-  showExtension
+  showExtension,
+  bodyRef
 }: GroupBodyProps): React.JSX.Element {
   const cell = groupCell(iconSize)
   const columns = groupColumns(width, cell)
+  const insertAt = useUiStore((state) =>
+    state.dropHint?.kind === 'group' && state.dropHint.groupId === group.id
+      ? state.dropHint.index
+      : null
+  )
+  // Drops read the grid from the DOM (src/renderer/components/dnd/group-drop.ts).
+  const grid = {
+    'data-group-body': group.id,
+    'data-columns': columns,
+    'data-cell-height': cell.height
+  }
   const list = useItemList({
     scope: group.id,
     items,
@@ -37,7 +82,8 @@ export function GroupBody({
   if (items.length === 0) {
     return (
       <div
-        data-group-body={group.id}
+        ref={bodyRef}
+        {...grid}
         className="flex min-h-0 flex-1 items-center justify-center p-3 text-center text-[11px] tracking-wide text-text-tertiary"
       >
         Drop icons here
@@ -47,12 +93,13 @@ export function GroupBody({
 
   return (
     <div
-      data-group-body={group.id}
+      ref={bodyRef}
+      {...grid}
       role="listbox"
       aria-label={`${group.title} items`}
       aria-multiselectable="true"
       onKeyDown={list.onKeyDown}
-      className="scrollbar-thin grid min-h-0 flex-1 content-start overflow-x-hidden overflow-y-auto"
+      className="scrollbar-thin relative grid min-h-0 flex-1 content-start overflow-x-hidden overflow-y-auto"
       style={{
         padding: GROUP_BODY_PADDING,
         gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
@@ -69,6 +116,9 @@ export function GroupBody({
           {...list.iconProps(item)}
         />
       ))}
+      {insertAt !== null && (
+        <DropIndicator index={insertAt} columns={columns} cellHeight={cell.height} />
+      )}
     </div>
   )
 }

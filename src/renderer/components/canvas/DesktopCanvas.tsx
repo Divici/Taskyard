@@ -17,6 +17,9 @@ import { useItemsStore } from '../../stores/items'
 import { useLayoutStore } from '../../stores/layout'
 import { useSettingsStore } from '../../stores/settings'
 import { useUiStore } from '../../stores/ui'
+import { CanvasDropZone } from '../dnd/CanvasDropZone'
+import { DndProvider } from '../dnd/DndProvider'
+import { useExternalDrop } from '../dnd/useExternalDrop'
 import { GroupWindow } from '../group/GroupWindow'
 import { CanvasContextMenu } from './CanvasContextMenu'
 import { EmptyHint } from './EmptyHint'
@@ -90,53 +93,58 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
   })
 
   const showHint = !hintDismissed && groups.length === 0 && looseTargets.length > 0
+  // Phase 8: files dropped from Explorer (native events; dnd-kit handles our own icons).
+  const externalDrop = useExternalDrop({ displayId, area, cell })
 
   return (
-    <div data-desktop-canvas={displayId} className="absolute inset-0">
-      <CanvasContextMenu
-        onNewGroup={(point) => newGroupAt(displayId, point, area, settings.gridSnap)}
-        onAutoOrganize={() => void confirmAutoOrganize(displayId, area, settings.iconSize)}
-        onSortLoose={() => sortLooseIcons(displayId, area, settings.iconSize)}
-        onRefresh={refreshDesktop}
-        onSettings={() => useUiStore.getState().setInspectorOpen(true)}
-        onOpenSettingsPage={openSettingsPage}
-        onQuit={quitApp}
-      >
-        <div
-          data-canvas-surface=""
-          className="absolute inset-0"
-          {...marquee.handlers}
-          onDoubleClick={() => {
-            if (settings.quickHideOnDoubleClick) useUiStore.getState().toggleQuickHidden()
-          }}
+    <div data-desktop-canvas={displayId} className="absolute inset-0" {...externalDrop}>
+      <DndProvider displayId={displayId} area={area} cell={cell}>
+        <CanvasContextMenu
+          onNewGroup={(point) => newGroupAt(displayId, point, area, settings.gridSnap)}
+          onAutoOrganize={() => void confirmAutoOrganize(displayId, area, settings.iconSize)}
+          onSortLoose={() => sortLooseIcons(displayId, area, settings.iconSize)}
+          onRefresh={refreshDesktop}
+          onSettings={() => useUiStore.getState().setInspectorOpen(true)}
+          onOpenSettingsPage={openSettingsPage}
+          onQuit={quitApp}
+        >
+          <div
+            data-canvas-surface=""
+            className="absolute inset-0"
+            {...marquee.handlers}
+            onDoubleClick={() => {
+              if (settings.quickHideOnDoubleClick) useUiStore.getState().toggleQuickHidden()
+            }}
+          />
+        </CanvasContextMenu>
+        <CanvasDropZone cell={cell} />
+        <LooseIconLayer
+          loose={loose}
+          byId={byId}
+          cell={cell}
+          iconSize={settings.iconSize}
+          showExtension={settings.showExtensions}
+          hidden={quickHidden}
         />
-      </CanvasContextMenu>
-      <LooseIconLayer
-        loose={loose}
-        byId={byId}
-        cell={cell}
-        iconSize={settings.iconSize}
-        showExtension={settings.showExtensions}
-        hidden={quickHidden}
-      />
-      {stacked.map((group, index) => (
-        <GroupWindow
-          key={group.id}
-          group={group}
-          displayId={displayId}
-          area={area}
-          stackIndex={index + 1}
-          hidden={quickHidden && !group.excludeFromQuickHide}
-        />
-      ))}
-      <Marquee />
-      {showHint && !quickHidden && (
-        <EmptyHint
-          area={area}
-          onAutoOrganize={() => autoOrganizeDisplay(displayId, area, settings.iconSize)}
-          onDismiss={() => useUiStore.getState().dismissHint()}
-        />
-      )}
+        {stacked.map((group, index) => (
+          <GroupWindow
+            key={group.id}
+            group={group}
+            displayId={displayId}
+            area={area}
+            stackIndex={index + 1}
+            hidden={quickHidden && !group.excludeFromQuickHide}
+          />
+        ))}
+        <Marquee />
+        {showHint && !quickHidden && (
+          <EmptyHint
+            area={area}
+            onAutoOrganize={() => autoOrganizeDisplay(displayId, area, settings.iconSize)}
+            onDismiss={() => useUiStore.getState().dismissHint()}
+          />
+        )}
+      </DndProvider>
     </div>
   )
 }

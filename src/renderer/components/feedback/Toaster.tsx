@@ -78,7 +78,9 @@ function ToastView({
       <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
       <div className="min-w-0 flex-1 text-popover-foreground">
         <p className="font-medium">{toast.message}</p>
-        {toast.description && <p className="mt-0.5 text-muted-foreground">{toast.description}</p>}
+        {toast.description && (
+          <p className="mt-0.5 whitespace-pre-line text-muted-foreground">{toast.description}</p>
+        )}
       </div>
       {toast.action && (
         <button

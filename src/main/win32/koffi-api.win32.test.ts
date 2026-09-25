@@ -35,6 +35,8 @@ const WS_POPUP = 0x80000000
 const WS_EX_TOOLWINDOW = 0x00000080
 const WS_EX_NOACTIVATE = 0x08000000
 const WS_VISIBLE = 0x10000000
+const WS_EX_TOPMOST = 0x00000008
+const SS_NOTIFY = 0x00000100
 const SW_HIDE = 0
 const DWMWA_CLOAK = 13
 const MAX_PATH = 260
@@ -179,6 +181,37 @@ describe.runIf(realWin32TestsEnabled())('createKoffiWin32Api (real Win32)', () =
 
     expect(b.isTopmost(hwnd)).toBe(true)
     api.seatAboveShell(hwnd)
+  })
+
+  it('finds the top-level window under the cursor (Phase 8 drag-out)', () => {
+    const point = { x: 0, y: 0 }
+    expect(b.GetCursorPos(point)).toBe(true)
+    // A visible topmost 24x24 popup centred on the cursor (SS_NOTIFY: a static control is
+    // otherwise transparent to hit testing), briefly on screen.
+    const user32 = koffi.load('user32.dll')
+    const createWindowEx = user32.func(
+      'void * __stdcall CreateWindowExW(uint32 ex, str16 cls, str16 title, uint32 style, int x, int y, int w, int h, void *parent, void *menu, void *inst, void *param)'
+    )
+    const hwnd = createWindowEx(
+      WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
+      'STATIC',
+      'taskyard-cursor-probe',
+      WS_POPUP | WS_VISIBLE | SS_NOTIFY,
+      point.x - 12,
+      point.y - 12,
+      24,
+      24,
+      null,
+      null,
+      null,
+      null
+    ) as Hwnd | null
+    expect(hwnd).not.toBeNull()
+    created.push(hwnd!)
+
+    expect(api.rootWindowAtCursor()).toBe(hwnd)
+    // Nobody holds a mouse button while the suite runs.
+    expect(api.isPrimaryButtonDown()).toBe(false)
   })
 
   it('lists the visible, uncloaked windows between a window and the shell window', () => {

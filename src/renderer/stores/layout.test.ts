@@ -629,4 +629,48 @@ describe('layout store', () => {
       })
     })
   })
+
+  describe('Phase 8 actions', () => {
+    it('placeItems places on one display (off every other) and restorePlacements undoes it', async () => {
+      const bridge = installFakeBridge()
+      const store = createLayoutStore()
+      const start: LayoutFile = {
+        ...emptyLayout(),
+        displays: [
+          { ...newDisplayLayout(1, PRIMARY), groups: [group('g-1', { items: ['1:2', '1:3'] })] },
+          { ...newDisplayLayout(2, SECONDARY), loose: { '1:9': { x: 0, y: 0 } } }
+        ]
+      }
+      store.getState().receive({ revision: 1, data: start })
+      const snapshot = [
+        { id: '1:2', displayId: 1, at: { groupId: 'g-1', beforeId: '1:3' } },
+        { id: '1:9', displayId: 2, at: { loose: { x: 0, y: 0 } } },
+        { id: '5:5', displayId: null, at: null }
+      ]
+
+      store.getState().placeItems(1, ['1:9', '5:5', '1:2'], {
+        loose: [
+          { x: 96, y: 0 },
+          { x: 96, y: 96 },
+          { x: 0, y: 96 }
+        ]
+      })
+      let [one, two] = store.getState().layout.displays
+      expect(one.loose).toEqual({
+        '1:9': { x: 96, y: 0 },
+        '5:5': { x: 96, y: 96 },
+        '1:2': { x: 0, y: 96 }
+      })
+      expect(one.groups[0].items).toEqual(['1:3'])
+      expect(two.loose).toEqual({})
+
+      store.getState().restorePlacements(snapshot)
+      ;[one, two] = store.getState().layout.displays
+      expect(one.loose).toEqual({})
+      expect(one.groups[0].items).toEqual(['1:2', '1:3'])
+      expect(two.loose).toEqual({ '1:9': { x: 0, y: 0 } })
+      await drain()
+      expect(bridge.storage.save.mock.calls.at(-1)?.[1].data).toEqual(store.getState().layout)
+    })
+  })
 })

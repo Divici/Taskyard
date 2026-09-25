@@ -1,6 +1,6 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import type { ReadOnlyInfo } from '@shared/ipc'
-import type { Rect } from '@shared/schema'
+import type { Point, Rect } from '@shared/schema'
 
 export type ToastTone = 'info' | 'success' | 'warning' | 'error'
 
@@ -54,6 +54,35 @@ export interface ConfirmRequest extends Required<ConfirmInput> {
   resolve(ok: boolean): void
 }
 
+/** Phase 8: an item drag in progress in this window. */
+export interface ItemDrag {
+  /** The dragged file ids, in the order they keep when dropped. */
+  ids: string[]
+  /** The icon the pointer grabbed. */
+  activeId: string
+  /** Groups the items come from (their blur pauses while dragging). */
+  sourceGroups: string[]
+  /** A pointer drag (it may leave the window for the OS drag); false for a keyboard drag. */
+  pointer: boolean
+}
+
+/**
+ * Phase 8: where a drop would land now: in a group before the item at `index` (null: the group
+ * sorts itself, so it only lights up), or on the desktop in the grid cell at `point`.
+ */
+export type DropHint =
+  { kind: 'group'; groupId: string; index: number | null } | { kind: 'canvas'; point: Point }
+
+function sameHint(a: DropHint | null, b: DropHint | null): boolean {
+  if (a === null || b === null) return a === b
+  if (a.kind === 'group' && b.kind === 'group')
+    return a.groupId === b.groupId && a.index === b.index
+  if (a.kind === 'canvas' && b.kind === 'canvas') {
+    return a.point.x === b.point.x && a.point.y === b.point.y
+  }
+  return false
+}
+
 export interface UiState {
   toasts: Toast[]
   /** Data files main will not overwrite this session (drives the read-only banner). */
@@ -98,6 +127,18 @@ export interface UiState {
   /** Answers the pending confirm (ConfirmHost calls it). */
   resolveConfirm(ok: boolean): void
   dismissHint(): void
+
+  // ---- Phase 8: drag and drop (per window, never persisted) ---------------------------------
+
+  /** The item drag in progress, or null. */
+  drag: ItemDrag | null
+  /** Where the current drag (ours or one from Explorer) would drop, or null. */
+  dropHint: DropHint | null
+  setDrag(drag: ItemDrag | null): void
+  /** Notifies only when the hint really changes (it is set on every pointer move). */
+  setDropHint(hint: DropHint | null): void
+  /** Clears the drag and the hint. */
+  endDrag(): void
 }
 
 function sameIds(a: readonly string[], b: readonly string[]): boolean {
@@ -131,6 +172,8 @@ export function createUiStore(): UseBoundStore<StoreApi<UiState>> {
     renaming: null,
     confirmRequest: null,
     hintDismissed: false,
+    drag: null,
+    dropHint: null,
 
     pushToast(input) {
       nextToast += 1
@@ -232,7 +275,23 @@ export function createUiStore(): UseBoundStore<StoreApi<UiState>> {
       request.resolve(ok)
     },
 
-    dismissHint: () => set({ hintDismissed: true })
+    dismissHint: () => set({ hintDismissed: true }),
+
+    setDrag: (drag) =>
+      set({
+        drag:
+          drag === null
+            ? null
+            : { ...drag, ids: [...drag.ids], sourceGroups: [...drag.sourceGroups] }
+      }),
+    setDropHint(hint) {
+      set((state) => (sameHint(state.dropHint, hint) ? state : { dropHint: hint }))
+    },
+    endDrag() {
+      set((state) =>
+        state.drag === null && state.dropHint === null ? state : { drag: null, dropHint: null }
+      )
+    }
   }))
 }
 

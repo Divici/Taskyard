@@ -63,6 +63,14 @@ export interface Win32Bindings {
   IsWindowVisible(hwnd: Hwnd): boolean
   IsIconic(hwnd: Hwnd): boolean
   GetWindowRect(hwnd: Hwnd, rect: WindowRect): boolean
+  /** Fills `point` (screen coordinates, physical pixels). */
+  GetCursorPos(point: { x: number; y: number }): boolean
+  /** POINT passed by value. */
+  WindowFromPoint(point: { x: number; y: number }): Hwnd | null
+  GetAncestor(hwnd: Hwnd, flags: number): Hwnd | null
+  /** SHORT: the high bit (negative) means the key is down now. */
+  GetAsyncKeyState(vk: number): number
+  GetSystemMetrics(index: number): number
   // dwmapi
   DwmGetWindowAttribute(hwnd: Hwnd, attribute: number, value: [number], size: number): number
   // comctl32
@@ -165,6 +173,11 @@ export function loadWin32Bindings(koffi: Koffi): Win32Bindings {
   })
 
   const RECT = koffi.struct({ left: 'long', top: 'long', right: 'long', bottom: 'long' })
+  const POINT = koffi.struct({ x: 'long', y: 'long' })
+  const GetCursorPos = toBool(
+    user32.func('__stdcall', 'GetCursorPos', 'int', [koffi.out(koffi.pointer(POINT))])
+  )
+  const WindowFromPoint = user32.func('__stdcall', 'WindowFromPoint', 'void *', [POINT])
   const IsWindowVisible = toBool(user32.func('int __stdcall IsWindowVisible(void *hwnd)'))
   const IsIconic = toBool(user32.func('int __stdcall IsIconic(void *hwnd)'))
   const GetWindowRect = toBool(
@@ -224,6 +237,11 @@ export function loadWin32Bindings(koffi: Koffi): Win32Bindings {
     IsWindowVisible,
     IsIconic,
     GetWindowRect,
+    GetCursorPos,
+    WindowFromPoint,
+    GetAncestor: user32.func('void * __stdcall GetAncestor(void *hwnd, uint32_t flags)'),
+    GetAsyncKeyState: user32.func('int16_t __stdcall GetAsyncKeyState(int vk)'),
+    GetSystemMetrics: user32.func('int __stdcall GetSystemMetrics(int index)'),
     DwmGetWindowAttribute,
     SetWindowSubclass: toBool(
       comctl32.func('__stdcall', 'SetWindowSubclass', 'int', [

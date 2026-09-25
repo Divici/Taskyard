@@ -214,6 +214,18 @@ describe('createDesktopWindow', () => {
     expect(only().webContents.tryToBlockUnload()).toBe(false)
   })
 
+  it('never lets the page navigate away (a file dropped outside the canvas would open file:///…)', () => {
+    createDesktopWindow(PRIMARY_DISPLAY, deps)
+
+    expect(only().webContents.tryToNavigate('file:///C:/Users/me/Downloads/report.pdf')).toBe(true)
+    expect(only().webContents.tryToNavigate('https://evil.example/')).toBe(true)
+    expect(log.warn).toHaveBeenCalledWith(
+      `desktop: blocked a navigation of display ${PRIMARY_DISPLAY.id} to file:///C:/Users/me/Downloads/report.pdf`
+    )
+    // Reloads (crash recovery, dev) are not navigations and keep working.
+    expect(only().webContents.listenerCount('will-navigate')).toBe(1)
+  })
+
   it('overrides a beforeunload veto (will-prevent-unload) once the app is quitting', () => {
     createDesktopWindow(PRIMARY_DISPLAY, deps)
     quitting = true

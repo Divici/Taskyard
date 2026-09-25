@@ -3,6 +3,10 @@ import type { Hwnd, Win32Api } from './api'
 import type { CallbackHandle, Koffi, Win32Bindings } from './bindings'
 import {
   ERROR_ACCESS_DENIED,
+  GA_ROOT,
+  SM_SWAPBUTTON,
+  VK_LBUTTON,
+  VK_RBUTTON,
   FILE_ADD_FILE,
   FILE_DELETE_CHILD,
   FILE_FLAG_BACKUP_SEMANTICS,
@@ -356,6 +360,55 @@ describe('queries', () => {
 
     expect(api.isAbove(SELF, SHELL)).toBe(true)
     expect(api.isAbove(SHELL, SELF)).toBe(false)
+  })
+})
+
+describe('rootWindowAtCursor (Phase 8 drag-out)', () => {
+  it('is the top-level window (GetAncestor GA_ROOT) of the window under the cursor', () => {
+    const CHILD = 0x201n
+    const GetCursorPos = vi.fn((point: { x: number; y: number }) => {
+      point.x = 640
+      point.y = -12
+      return true
+    })
+    const WindowFromPoint = vi.fn(() => CHILD)
+    const GetAncestor = vi.fn(() => APP)
+    Object.assign(fb.b, { GetCursorPos, WindowFromPoint, GetAncestor })
+    const api = createApi()
+
+    expect(api.rootWindowAtCursor()).toBe(APP)
+    expect(WindowFromPoint).toHaveBeenCalledWith({ x: 640, y: -12 })
+    expect(GetAncestor).toHaveBeenCalledWith(CHILD, GA_ROOT)
+  })
+
+  it('is null when the cursor position is unknown or no window is there', () => {
+    Object.assign(fb.b, {
+      GetCursorPos: vi.fn(() => false),
+      WindowFromPoint: vi.fn(() => APP),
+      GetAncestor: vi.fn(() => APP)
+    })
+    expect(createApi().rootWindowAtCursor()).toBeNull()
+
+    Object.assign(fb.b, { GetCursorPos: vi.fn(() => true), WindowFromPoint: vi.fn(() => null) })
+    expect(createApi().rootWindowAtCursor()).toBeNull()
+  })
+})
+
+describe('isPrimaryButtonDown (Phase 8 drag-out)', () => {
+  it('reads the physical button that is primary: left, or right when the buttons are swapped', () => {
+    const pressed = new Set<number>([VK_LBUTTON])
+    let swapped = 0
+    const GetAsyncKeyState = vi.fn((vk: number) => (pressed.has(vk) ? -32768 : 0))
+    const GetSystemMetrics = vi.fn(() => swapped)
+    Object.assign(fb.b, { GetAsyncKeyState, GetSystemMetrics })
+    const api = createApi()
+
+    expect(api.isPrimaryButtonDown()).toBe(true)
+    expect(GetSystemMetrics).toHaveBeenCalledWith(SM_SWAPBUTTON)
+    swapped = 1
+    expect(api.isPrimaryButtonDown()).toBe(false)
+    pressed.add(VK_RBUTTON)
+    expect(api.isPrimaryButtonDown()).toBe(true)
   })
 })
 

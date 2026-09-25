@@ -266,7 +266,9 @@ export const IPC = {
     icons: 'desktop:icons'
   },
   theme: { get: 'theme:get' },
-  wallpaper: { get: 'wallpaper:get' }
+  wallpaper: { get: 'wallpaper:get' },
+  // Phase 8: dragging desktop items out to other apps (src/main/desktop/dnd-ipc.ts).
+  dragOut: { start: 'desktop:startDrag', probe: 'desktop:cursorOverOtherWindow' }
 } as const
 
 /** `app:openExternal` opens only these URL schemes; main enforces it. */
@@ -304,6 +306,14 @@ export interface IpcRequests {
   'wallpaper:get': { args: [displayId: number]; result: WallpaperInfo | null }
   /** Phase 5: the best icon main has sent so far for every item (a window that loads late). */
   'desktop:icons': { args: []; result: DesktopIcon[] }
+  /**
+   * Phase 8: hands the items' files to the OS drag (`webContents.startDrag`) of the calling
+   * window. Resolves when the OS drag ends (Windows runs it as a modal loop); false when nothing
+   * could be dragged (no id on the desktop, no icon).
+   */
+  'desktop:startDrag': { args: [ids: string[]]; result: boolean }
+  /** Phase 8: whether another app's window is under the cursor (it covers the desktop there). */
+  'desktop:cursorOverOtherWindow': { args: []; result: boolean }
 }
 
 export type RequestChannel = keyof IpcRequests
@@ -313,8 +323,6 @@ export type RequestChannel = keyof IpcRequests
  * preload and not handled until the owning phase adds them; that phase finalises the result types.
  */
 export interface PlannedRequests {
-  /** Phase 8 */
-  'desktop:startDrag': { args: [ids: string[]]; result: void }
   /** Phase 10 */
   'timer:notify': { args: [linkedTaskText?: string]; result: void }
 }

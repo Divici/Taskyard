@@ -86,6 +86,10 @@ export interface DesktopWebContents extends WebContentsLike {
   ): unknown
   /** A page's beforeunload tries to veto an unload; preventDefault() ignores the veto. */
   on(event: 'will-prevent-unload', listener: (event: { preventDefault(): void }) => void): unknown
+  on(
+    event: 'will-navigate',
+    listener: (event: { preventDefault(): void }, url: string) => void
+  ): unknown
   on(event: 'render-process-gone', listener: (event: unknown, details: unknown) => void): unknown
   on(
     event: 'preload-error',
@@ -362,6 +366,13 @@ function setUpDesktopWindow(
 
   const { webContents } = window
   webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  // The desktop layer never navigates (a file dropped on the page would open file:///…, and the
+  // sender guard would then refuse every IPC call from the dead window). Reloads — crash recovery,
+  // dev — are not navigations and are unaffected.
+  webContents.on('will-navigate', (event, url) => {
+    event.preventDefault()
+    log.warn(`desktop: blocked a navigation of display ${display.id} to ${url}`)
+  })
   webContents.on('before-input-event', (event, input) => {
     if (isBlockedDesktopShortcut(input)) {
       event.preventDefault()

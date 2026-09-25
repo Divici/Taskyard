@@ -58,6 +58,8 @@ export interface DesktopService extends DesktopIpcTarget {
   scan(): Promise<ScanReport>
   /** Boot step "watch": starts the file watcher (a no-op after `stop`). */
   watch(): Promise<void>
+  /** Phase 8 drag-out: the current paths of the ids main knows, in order (others skipped). */
+  pathsOf(ids: readonly string[]): string[]
   /** Quit path: stops the watcher and every pending timer. Safe to call twice. */
   stop(): Promise<void>
 }
@@ -205,6 +207,9 @@ export function createDesktopService(deps: DesktopServiceDeps): DesktopService {
     rescan: () => tracker.rescan(),
 
     icons: () => deps.icons?.list() ?? [],
+
+    pathsOf: (ids) =>
+      ids.map((id) => model.get(id)?.path).filter((path): path is string => path !== undefined),
 
     async watch() {
       if (stopped || watching !== null) return

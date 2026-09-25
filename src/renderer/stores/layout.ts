@@ -36,6 +36,7 @@ import type {
   Rect,
   ToolsState
 } from '@shared/schema'
+import { placeItems, restorePlacements, type ItemPlacement } from '@shared/drop-placement'
 import { createStoreDoc, type StoreSyncOptions } from './persist'
 
 /**
@@ -132,6 +133,16 @@ export interface LayoutState {
   applyAutoOrganize(displayId: number, groups: Group[]): void
   /** Lays the display's loose icons out again, column-first around the groups, in `order`. */
   arrangeLoose(displayId: number, order: string[], area: Rect, cell: Size): void
+
+  // ---- Phase 8: drops ------------------------------------------------------------------------
+
+  /**
+   * Places items on `displayId` at `target` (like `moveItems`) and takes them off every other
+   * display first: an Explorer drop's new files may already have been placed by reconcile.
+   */
+  placeItems(displayId: number, ids: string[], target: MoveTarget): void
+  /** Puts items back where `placementsOf` found them (Undo); ids that were nowhere are forgotten. */
+  restorePlacements(snapshot: ItemPlacement[]): void
 
   /** Forgets main's data, the revision and unsaved changes; back to unhydrated (tests). */
   reset(): void
@@ -309,6 +320,17 @@ export function createLayoutStore(
         const within = { ...area }
         const size = { ...cell }
         doc.current.mutate((layout) => arrangeLoose(layout, displayId, ids, within, size))
+      },
+
+      placeItems(displayId, ids, target) {
+        const moving = [...ids]
+        const to = copyTarget(target)
+        doc.current.mutate((layout) => placeItems(layout, displayId, moving, to))
+      },
+
+      restorePlacements(snapshot) {
+        const entries = structuredClone(snapshot)
+        doc.current.mutate((layout) => restorePlacements(layout, entries))
       },
 
       reset() {

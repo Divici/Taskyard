@@ -1,8 +1,10 @@
+import { useDraggable } from '@dnd-kit/core'
 import { Cloud, Lock } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { ICON_GLYPH, LOOSE_GLYPH, type IconSize } from '@shared/group-metrics'
 import type { DesktopItem } from '@shared/schema'
 import { cn } from '../../lib/utils'
+import { useUiStore } from '../../stores/ui'
 import { ItemIcon, ShortcutArrow } from '../desktop/ItemIcon'
 import { displayName, optionDomId } from './item-label'
 import { RenameInline } from './RenameInline'
@@ -51,12 +53,24 @@ export function DesktopIcon({
   style,
   className
 }: DesktopIconProps): React.JSX.Element {
+  // Phase 8: every icon is draggable (dnd-kit, 6 px before a press becomes a drag; not while its
+  // name is being edited). Only the listeners are spread: the option keeps its own role and tab
+  // stop, and gets dnd-kit's instructions as its description.
+  const { setNodeRef, listeners, attributes } = useDraggable({
+    id: item.id,
+    data: { kind: 'item', itemId: item.id },
+    disabled: renaming
+  })
+  const dragSource = useUiStore((state) => state.drag?.ids.includes(item.id) ?? false)
   const name = displayName(item, showExtension)
   const grouped = variant === 'group'
   const glyph = (grouped ? ICON_GLYPH : LOOSE_GLYPH)[iconSize]
 
   return (
     <div
+      ref={setNodeRef}
+      {...listeners}
+      aria-describedby={attributes['aria-describedby'] || undefined}
       id={optionDomId(scope, item.id)}
       role="option"
       aria-selected={selected}
@@ -65,6 +79,7 @@ export function DesktopIcon({
       title={item.path}
       data-item-id={item.id}
       data-selected={selected || undefined}
+      data-drag-source={dragSource || undefined}
       onClick={onSelect}
       onDoubleClick={onOpen}
       style={style}
@@ -73,6 +88,8 @@ export function DesktopIcon({
         'transition-colors duration-150 hover:bg-white/10',
         'focus-visible:ring-2 focus-visible:ring-accent-1 focus-visible:ring-offset-0',
         selected && 'bg-accent-2/25 ring-1 ring-accent-1/50 hover:bg-accent-2/30',
+        // Left in place, faded, while its preview follows the pointer.
+        dragSource && 'opacity-40',
         className
       )}
     >

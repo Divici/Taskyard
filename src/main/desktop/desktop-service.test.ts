@@ -260,4 +260,15 @@ describe('desktop service', () => {
     service = create()
     expect(service.icons()).toEqual([])
   })
+
+  it('pathsOf: the current paths of known ids, in order, skipping unknown ones (Phase 8 drag-out)', async () => {
+    writeFileSync(join(desktop, 'a.txt'), '')
+    writeFileSync(join(publicDesktop, 'b.txt'), '')
+    service = create()
+    const { items } = await service.scan()
+    const a = items.find((item) => item.name === 'a')!
+    const b = items.find((item) => item.name === 'b')!
+
+    expect(service.pathsOf([b.id, '9:9', a.id])).toEqual([b.path, a.path])
+  })
 })

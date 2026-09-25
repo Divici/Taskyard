@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { axe } from 'vitest-axe'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { defaultSettings } from '@shared/defaults'
@@ -23,6 +23,10 @@ const DISPLAY_ONE = {
 beforeEach(() => {
   window.history.replaceState(null, '', '/?displayId=1')
 })
+
+/** The toast region (not dnd-kit's live region, also a status). */
+const notifications = (): ReturnType<typeof within> =>
+  within(screen.getByRole('region', { name: 'Notifications' }))
 
 async function renderApp(bridge: FakeBridge = installFakeBridge()): Promise<FakeBridge> {
   render(<App />)
@@ -116,7 +120,8 @@ describe('App', () => {
 
     await renderApp(bridge)
 
-    expect(await screen.findByRole('status')).toHaveTextContent(
+    // dnd-kit's drag announcements are a status region too (Phase 8): the toasts' one is meant.
+    expect(await notifications().findByRole('status')).toHaveTextContent(
       'Taskyard couldn’t read your desktop layout, so it restored the last backup.'
     )
   })
@@ -133,7 +138,7 @@ describe('App', () => {
       })
     })
 
-    expect(screen.getByRole('status')).toHaveTextContent(
+    expect(notifications().getByRole('status')).toHaveTextContent(
       'Taskyard couldn’t read your tasks and timer and started fresh.'
     )
   })

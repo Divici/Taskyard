@@ -69,6 +69,15 @@ export interface TaskyardApi {
     rescan(): Promise<void>
     /** Every icon main has sent so far ({id, px, dataUrl}); later ones arrive as desktop:icon. */
     icons(): Promise<DesktopIcon[]>
+    /**
+     * Phase 8: hands the items' files to the OS drag of this window (call it after cancelling the
+     * in-page drag). Resolves when the OS drag ends; false when nothing could be dragged.
+     */
+    startDrag(ids: string[]): Promise<boolean>
+    /** Phase 8: whether another app's window is under the cursor (it covers the desktop there). */
+    cursorOverOtherWindow(): Promise<boolean>
+    /** Phase 8: the path of a File dropped from Explorer (`webUtils.getPathForFile`; '' if none). */
+    pathForFile(file: File): string
   }
 
   theme: {

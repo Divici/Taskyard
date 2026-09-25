@@ -8,6 +8,15 @@ export interface IpcRendererLike {
   removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown
 }
 
+/** Electron's `webUtils` slice: the path of a File dropped from Explorer (injectable for tests). */
+export interface WebUtilsLike {
+  getPathForFile(file: File): string
+}
+
+const NO_WEB_UTILS: WebUtilsLike = {
+  getPathForFile: () => ''
+}
+
 /**
  * Builds `window.taskyard`. Each method maps to one request channel; `on` accepts only the listed
  * event channels and hands listeners the payload alone — never the IPC event, which would expose
@@ -15,7 +24,8 @@ export interface IpcRendererLike {
  */
 export function createTaskyardApi(
   ipc: IpcRendererLike,
-  versions: TaskyardApi['versions']
+  versions: TaskyardApi['versions'],
+  webUtils: WebUtilsLike = NO_WEB_UTILS
 ): TaskyardApi {
   const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
     ipc.invoke(channel, ...args) as Promise<T>
@@ -48,7 +58,10 @@ export function createTaskyardApi(
       moveToDesktop: (paths) => invoke(IPC.desktop.moveToDesktop, paths),
       undoMove: (token) => invoke(IPC.desktop.undoMove, token),
       rescan: () => invoke(IPC.desktop.rescan),
-      icons: () => invoke(IPC.desktop.icons)
+      icons: () => invoke(IPC.desktop.icons),
+      startDrag: (ids) => invoke(IPC.dragOut.start, ids),
+      cursorOverOtherWindow: () => invoke(IPC.dragOut.probe),
+      pathForFile: (file) => webUtils.getPathForFile(file)
     },
 
     theme: {

@@ -26,7 +26,8 @@ describe('IPC channel names', () => {
         icons: 'desktop:icons'
       },
       theme: { get: 'theme:get' },
-      wallpaper: { get: 'wallpaper:get' }
+      wallpaper: { get: 'wallpaper:get' },
+      dragOut: { start: 'desktop:startDrag', probe: 'desktop:cursorOverOtherWindow' }
     })
   })
 

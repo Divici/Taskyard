@@ -1,3 +1,4 @@
+import { useDroppable } from '@dnd-kit/core'
 import { useMemo, useRef, useState } from 'react'
 import { GROUP_HEADER_HEIGHT, GROUP_MIN_SIZE } from '@shared/group-metrics'
 import type { DesktopItem, Group, Rect } from '@shared/schema'
@@ -7,6 +8,7 @@ import { useItemsStore } from '../../stores/items'
 import { useLayoutStore } from '../../stores/layout'
 import { useSettingsStore } from '../../stores/settings'
 import { useUiStore } from '../../stores/ui'
+import { groupDropId, type GroupDropData } from '../dnd/dnd-types'
 import { GroupBody } from './GroupBody'
 import { GroupContextMenu } from './GroupContextMenu'
 import { GroupHeader } from './GroupHeader'
@@ -53,6 +55,26 @@ export function GroupWindow({
   const [draft, setDraft] = useState<Rect | null>(null)
   const [resizing, setResizing] = useState(false)
   const element = useRef<HTMLElement>(null)
+  const body = useRef<HTMLDivElement>(null)
+  // Phase 8: the whole group (title bar too, so a rolled-up group still takes drops) is a drop
+  // target; the insert index comes from the rendered grid.
+  const dropData: GroupDropData = {
+    kind: 'group',
+    groupId: group.id,
+    z: stackIndex ?? group.z,
+    sort: group.sort,
+    body: () => body.current
+  }
+  const { setNodeRef: setDropNode } = useDroppable({
+    id: groupDropId(group.id),
+    data: dropData,
+    disabled: hidden
+  })
+  // Items leaving this group: its blur pauses while they are dragged (data-dragging).
+  const itemsLeaving = useUiStore((state) => state.drag?.sourceGroups.includes(group.id) ?? false)
+  const dropTarget = useUiStore(
+    (state) => state.dropHint?.kind === 'group' && state.dropHint.groupId === group.id
+  )
 
   const layout = (): ReturnType<typeof useLayoutStore.getState> => useLayoutStore.getState()
   const rect = draft ?? groupRect(group)
@@ -92,14 +114,18 @@ export function GroupWindow({
   return (
     <GroupContextMenu group={group} displayId={displayId} area={area} itemCount={items.length}>
       <section
-        ref={element}
+        ref={(node) => {
+          element.current = node
+          setDropNode(node)
+        }}
         role="region"
         aria-label={group.title}
         aria-hidden={hidden || undefined}
         inert={hidden}
         data-group-id={group.id}
         data-rolled-up={group.rolledUp || undefined}
-        data-dragging={drag.dragging || resizing || undefined}
+        data-dragging={drag.dragging || resizing || itemsLeaving || undefined}
+        data-drop-target={dropTarget || undefined}
         // Any press on the group raises it (a no-op when it is already on top).
         onPointerDownCapture={() => layout().bringGroupToFront(displayId, group.id)}
         style={{
@@ -111,6 +137,7 @@ export function GroupWindow({
         }}
         className={cn(
           'glass absolute flex flex-col transition-[opacity,border-color] duration-[180ms] hover:border-accent-1/50',
+          'data-[drop-target]:border-accent-1',
           hidden && 'pointer-events-none opacity-0'
         )}
       >
@@ -136,6 +163,7 @@ export function GroupWindow({
             width={rect.width}
             iconSize={iconSize}
             showExtension={showExtension}
+            bodyRef={body}
           />
         )}
         <ResizeHandles

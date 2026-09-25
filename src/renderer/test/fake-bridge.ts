@@ -156,7 +156,11 @@ export function createFakeBridge(options: FakeBridgeOptions = {}): FakeBridge {
       moveToDesktop: vi.fn(async () => ({ moves: [] })),
       undoMove: vi.fn(async () => ({ ok: true as const, path: '' })),
       rescan: vi.fn(async () => {}),
-      icons: vi.fn(async () => structuredClone(options.icons ?? []))
+      icons: vi.fn(async () => structuredClone(options.icons ?? [])),
+      startDrag: vi.fn(async () => true),
+      cursorOverOtherWindow: vi.fn(async () => false),
+      // A dropped File's path: tests give their Files a `path` (webUtils in the real preload).
+      pathForFile: vi.fn((file: File) => (file as File & { path?: string }).path ?? '')
     } as unknown as FakeBridge['desktop'],
     theme: {
       get: vi.fn(async () => ({ ...FAKE_THEME })) as FakeBridge['theme']['get']

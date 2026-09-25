@@ -72,9 +72,11 @@ export function useItemList({ scope, items, neighbor }: ItemListOptions): ItemLi
   }
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
+    const ui = useUiStore.getState()
+    // A keyboard drag owns the arrows, Space, Enter and Escape until it drops (Phase 8).
+    if (ui.drag !== null) return
     const action = itemKeyAction(event)
     if (!action) return
-    const ui = useUiStore.getState()
     event.preventDefault()
     switch (action.type) {
       case 'move': {

@@ -24,6 +24,7 @@ import { acquireSingleInstanceLock } from './app/single-instance'
 import { startDesktop } from './app/start-desktop'
 import { createThemeService, registerThemeIpc, type ThemeService } from './app/theme-service'
 import { registerDesktopIpc } from './desktop/desktop-ipc'
+import { cursorOverOtherWindow, registerDragOutIpc } from './desktop/dnd-ipc'
 import { resolveDesktopDirs } from './desktop/desktop-dirs'
 import { createDesktopService, type DesktopService } from './desktop/desktop-service'
 import { registerWallpaperIpc } from './desktop/wallpaper-ipc'
@@ -44,7 +45,7 @@ import { createStorage } from './storage/stores'
 import { createWin32Api } from './win32'
 import type { Win32Api } from './win32/api'
 import { iconBitmapToPng } from './win32/icon-bitmap'
-import type { RendererSource } from './windows/desktop-window'
+import { hwndFromHandle, type RendererSource } from './windows/desktop-window'
 import {
   createDesktopWindowManager,
   type DesktopWindowManager
@@ -133,6 +134,39 @@ function startPrimaryInstance(): void {
     (resolve) => (desktopFilesReady = resolve)
   )
   registerDesktopIpc(ipcMain, trust, () => desktopFilesPromise)
+  // Phase 8: dragging items out to other apps (the renderer cancels its own drag first).
+  registerDragOutIpc(ipcMain, trust, {
+    paths: async (ids) => (await desktopFilesPromise).pathsOf(ids),
+    icon: (ids, files) => dragIcon(ids, files),
+    startDrag: (event, item) =>
+      (event.sender as Electron.WebContents).startDrag(item as Electron.Item),
+    cursorOverOtherWindow: async (event) => {
+      const selection = await win32
+      if (selection.kind === 'unavailable') return false
+      const owner = BrowserWindow.fromWebContents(event.sender as Electron.WebContents)
+      const own =
+        owner && !owner.isDestroyed() ? hwndFromHandle(owner.getNativeWindowHandle()) : null
+      return cursorOverOtherWindow(selection.api, own)
+    },
+    primaryButtonDown: async () => {
+      const selection = await win32
+      return selection.kind !== 'unavailable' && selection.api.isPrimaryButtonDown()
+    }
+  })
+  /** The first dragged item's icon (as streamed to the renderers), else Windows' file icon. */
+  async function dragIcon(ids: string[], files: string[]): Promise<Electron.NativeImage | null> {
+    const sent = desktopFiles?.icons().find((icon) => icon.id === ids[0] && icon.dataUrl !== null)
+    if (sent?.dataUrl) {
+      const image = nativeImage.createFromDataURL(sent.dataUrl)
+      if (!image.isEmpty()) return image
+    }
+    try {
+      return await app.getFileIcon(files[0], { size: 'normal' })
+    } catch (error) {
+      log.warn('dnd: no file icon for the drag', error)
+      return null
+    }
+  }
 
   // Phase 6: the wallpaper layer and the theme. The wallpaper service needs Win32 and the screen
   // (both after ready), so wallpaper:get requests wait for it; the theme needs nativeTheme.

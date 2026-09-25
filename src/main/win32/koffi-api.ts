@@ -18,6 +18,10 @@ import {
   INVALID_HANDLE_VALUE,
   OPEN_EXISTING,
   WIN32_ERROR_CODES,
+  GA_ROOT,
+  SM_SWAPBUTTON,
+  VK_LBUTTON,
+  VK_RBUTTON,
   GW_HWNDNEXT,
   GW_HWNDPREV,
   HKEY_CURRENT_USER,
@@ -241,6 +245,18 @@ export function createKoffiWin32Api(koffi: Koffi, options: KoffiWin32ApiOptions)
         current = probe.windowBelow(current)
       }
       return []
+    },
+
+    rootWindowAtCursor() {
+      const point = { x: 0, y: 0 }
+      if (!b.GetCursorPos(point)) return null
+      const hit = b.WindowFromPoint(point)
+      return hit === null ? null : (b.GetAncestor(hit, GA_ROOT) ?? hit)
+    },
+
+    isPrimaryButtonDown() {
+      const vk = b.GetSystemMetrics(SM_SWAPBUTTON) !== 0 ? VK_RBUTTON : VK_LBUTTON
+      return (b.GetAsyncKeyState(vk) & 0x8000) !== 0
     },
 
     getFileAttributes(path) {
