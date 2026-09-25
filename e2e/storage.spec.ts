@@ -64,15 +64,20 @@ test('a corrupt layout.json is quarantined, restored from .bak and announced wit
     await expect(
       page.getByRole('region', { name: 'Notifications' }).getByRole('status')
     ).toContainText('Taskyard couldn’t read your desktop layout, so it restored the last backup.')
-    // The restored backup is what the windows start from; each then registers its own display.
+    // The restored backup is what the windows start from. Its display id (1) is not a real one,
+    // so main re-matches that entry to a connected display (Phase 11: same bounds, else same
+    // size, else the primary) before the windows register theirs: one entry per display.
     const displayCount = await app.evaluate(({ screen }) => screen.getAllDisplays().length)
+    const displayIds = await app.evaluate(({ screen }) => screen.getAllDisplays().map((d) => d.id))
     const loadLayout = (): Promise<{ revision: number; data: typeof backup }> =>
       page.evaluate(() =>
         (globalThis as unknown as BridgeWindow).taskyard.storage.load('layout')
       ) as Promise<{ revision: number; data: typeof backup }>
-    await expect.poll(async () => (await loadLayout()).data.displays.length).toBe(1 + displayCount)
+    await expect.poll(async () => (await loadLayout()).data.displays.length).toBe(displayCount)
     const loaded = await loadLayout()
-    expect(loaded.data.displays[0]).toEqual(backup.displays[0])
+    expect(loaded.data.displays.map((d) => d.displayId).sort()).toEqual([...displayIds].sort())
+    // The backup's loose icon survived the re-match (on whichever display took the entry).
+    expect(loaded.data.displays.some((d) => d.loose['1:2'] !== undefined)).toBe(true)
     expect(loaded.data.paths).toEqual(backup.paths)
     await app.close()
 

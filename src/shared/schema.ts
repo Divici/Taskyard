@@ -92,13 +92,29 @@ export const DisplayLayoutSchema = z.object({
   tools: ToolsStateSchema.default(() => ({ ...TOOLS_VALUES }))
 })
 
+/**
+ * Phase 11: a monitor that went away. Its original entry is kept here, untouched, while copies of
+ * its groups (same ids) and its loose icons are shown on `hostDisplayId`; when a monitor that
+ * matches it comes back, the entry is restored there and the copies leave the host.
+ */
+export const ParkedDisplaySchema = z.object({
+  entry: DisplayLayoutSchema,
+  hostDisplayId: z.number().int(),
+  /** The groups copied onto the host (by id). */
+  groupIds: z.array(z.string().min(1)),
+  /** The loose icons placed on the host. */
+  looseIds: z.array(FileIdSchema)
+})
+
 export const LayoutFileSchema = z.object({
   version: z.literal(SCHEMA_VERSION),
   displays: z.array(DisplayLayoutSchema).default(() => []),
   /** File id → last known path. Top level, so a rename updates exactly one entry. */
   paths: z.record(FileIdSchema, z.string()).default(() => ({})),
   /** File id → epoch ms when the id was first found missing (pruned after 30 days). */
-  lastSeen: z.record(FileIdSchema, z.number().int().nonnegative()).default(() => ({}))
+  lastSeen: z.record(FileIdSchema, z.number().int().nonnegative()).default(() => ({})),
+  /** Phase 11: monitors that went away (optional: older files and saves without it stay valid). */
+  parked: z.array(ParkedDisplaySchema).optional()
 })
 
 // ---------------------------------------------------------------------------------------------
@@ -209,6 +225,7 @@ export type GroupSort = z.infer<typeof GroupSortSchema>
 export type Group = z.infer<typeof GroupSchema>
 export type ToolsState = z.infer<typeof ToolsStateSchema>
 export type DisplayLayout = z.infer<typeof DisplayLayoutSchema>
+export type ParkedDisplay = z.infer<typeof ParkedDisplaySchema>
 export type LayoutFile = z.infer<typeof LayoutFileSchema>
 export type Task = z.infer<typeof TaskSchema>
 export type TimerState = z.infer<typeof TimerStateSchema>

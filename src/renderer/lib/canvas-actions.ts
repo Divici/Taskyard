@@ -1,5 +1,5 @@
 import { autoOrganize } from '@shared/auto-organize'
-import { clampRect, snapRect, snapValue } from '@shared/geometry'
+import { clampRect, localWorkArea, snapRect, snapValue } from '@shared/geometry'
 import {
   GROUP_MIN_SIZE,
   NEW_GROUP_SIZE,
@@ -12,6 +12,7 @@ import { useItemsStore } from '../stores/items'
 import { useLayoutStore } from '../stores/layout'
 import { useUiStore } from '../stores/ui'
 import { getBridge } from './bridge'
+import { isPrimaryDisplay } from './reconcile-sync'
 import { sortByName } from './sort-items'
 
 // Desktop-level actions of the canvas (its menu, the marquee, the empty-desktop hint).
@@ -133,4 +134,59 @@ export function quitApp(): void {
   getBridge()
     .app.quit()
     .catch((error: unknown) => console.error('app: quit failed', error))
+}
+
+/**
+ * Settings › Reset layout (Phase 11): asks first (it cannot be undone), then removes every group
+ * on every display and lays all the icons out again on the primary display, sorted by name, like
+ * new ones. No file moves. The primary display comes from main, so any window can do it.
+ */
+export async function confirmResetLayout(iconSize: IconSize): Promise<void> {
+  const ok = await useUiStore.getState().confirm({
+    title: 'Reset the layout?',
+    description:
+      'Every group is removed on every display, and all your icons go back to the main display, sorted by name. No files move or change. This can’t be undone.',
+    confirmLabel: 'Reset layout',
+    destructive: true
+  })
+  if (!ok) return
+  try {
+    const displays = await getBridge().display.list()
+    const primary = displays.find(isPrimaryDisplay) ?? displays[0]
+    if (!primary) throw new Error('main listed no displays')
+    const items = Object.values(useItemsStore.getState().byId).map(({ id, path, name }) => ({
+      id,
+      path,
+      name
+    }))
+    useLayoutStore.getState().resetLayout(items, {
+      displayId: primary.id,
+      area: localWorkArea(primary),
+      cell: looseCell(iconSize)
+    })
+  } catch (error) {
+    console.error('layout: resetting failed', error)
+    useUiStore.getState().pushToast({
+      id: 'reset-layout-failed',
+      tone: 'error',
+      message: 'Taskyard couldn’t reset the layout.'
+    })
+  }
+}
+
+/** Settings › Open data folder: settings, layout, tasks and logs in Explorer. */
+export function openDataFolder(): void {
+  getBridge()
+    .app.openDataFolder()
+    .then(
+      (opened) => {
+        if (opened) return
+        useUiStore.getState().pushToast({
+          id: 'data-folder-failed',
+          tone: 'error',
+          message: 'Windows couldn’t open the data folder.'
+        })
+      },
+      (error: unknown) => console.error('app: opening the data folder failed', error)
+    )
 }

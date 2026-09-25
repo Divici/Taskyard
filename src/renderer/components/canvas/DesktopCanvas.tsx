@@ -14,6 +14,7 @@ import {
   sortLooseIcons
 } from '../../lib/canvas-actions'
 import { toggleQuickHide } from '../../lib/quick-hide'
+import { isPrimaryDisplay } from '../../lib/reconcile-sync'
 import { useItemsStore } from '../../stores/items'
 import { useLayoutStore } from '../../stores/layout'
 import { useSettingsStore } from '../../stores/settings'
@@ -22,6 +23,8 @@ import { CanvasDropZone } from '../dnd/CanvasDropZone'
 import { DndProvider } from '../dnd/DndProvider'
 import { useExternalDrop } from '../dnd/useExternalDrop'
 import { GroupWindow } from '../group/GroupWindow'
+import { Inspector } from '../inspector/Inspector'
+import { FirstRun } from '../onboarding/FirstRun'
 import { toggleToolsOn } from '../tools/tools-actions'
 import { ToolsLayer } from '../tools/ToolsLayer'
 import { CanvasContextMenu } from './CanvasContextMenu'
@@ -61,6 +64,8 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
   const layoutHydrated = useLayoutStore((state) => state.hydrated)
   const byId = useItemsStore((state) => state.byId)
   const settings = useSettingsStore((state) => state.settings)
+  const settingsHydrated = useSettingsStore((state) => state.hydrated)
+  const inspectorOpen = useUiStore((state) => state.inspectorOpen)
   const quickHidden = useUiStore((state) => state.quickHidden)
   const hintDismissed = useUiStore((state) => state.hintDismissed)
   const toolsShown = settings.toolsEnabled && (entry?.tools.visible ?? false) // Phase 10: the menu's wording
@@ -96,7 +101,9 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
     onDrawGroup: (rect, ids) => groupFromMarquee(displayId, rect, area, settings.gridSnap, ids)
   })
 
-  const showHint = !hintDismissed && groups.length === 0 && looseTargets.length > 0
+  // Phase 11: the first-run card, once, on the primary display (it takes the hint's place).
+  const showFirstRun = settingsHydrated && !settings.firstRunDone && isPrimaryDisplay(info)
+  const showHint = !showFirstRun && !hintDismissed && groups.length === 0 && looseTargets.length > 0
   // Phase 8: files dropped from Explorer (native events; dnd-kit handles our own icons).
   const externalDrop = useExternalDrop({ displayId, area, cell })
 
@@ -160,6 +167,9 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
             onDismiss={() => useUiStore.getState().dismissHint()}
           />
         )}
+        {showFirstRun && !quickHidden && <FirstRun displayId={displayId} area={area} />}
+        {/* Phase 11: the settings inspector (canvas menu › Settings, the tray). */}
+        {inspectorOpen && <Inspector displayId={displayId} area={area} />}
       </DndProvider>
     </div>
   )

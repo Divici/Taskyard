@@ -153,6 +153,24 @@ describe('LayoutFileSchema', () => {
   it('matches emptyLayout()', () => {
     expect(LayoutFileSchema.parse({ version: 1 })).toEqual(emptyLayout())
   })
+
+  it('Phase 11: keeps parked displays (a monitor that went away), optional for older files', () => {
+    const parked = [
+      {
+        entry: { ...display, displayId: 20, groups: [group] },
+        hostDisplayId: 2528732444,
+        groupIds: [group.id],
+        looseIds: ['1:9']
+      }
+    ]
+    const layout = { ...emptyLayout(), parked }
+    expect(LayoutFileSchema.parse(layout)).toEqual(layout)
+    expect(LayoutFileSchema.parse({ version: 1 }).parked).toBeUndefined()
+    expect(
+      LayoutFileSchema.safeParse({ ...emptyLayout(), parked: [{ ...parked[0], looseIds: ['x'] }] })
+        .success
+    ).toBe(false)
+  })
 })
 
 describe('TasksFileSchema', () => {

@@ -388,3 +388,19 @@ export function applyAutoOrganize(
     return { ...display, groups: [...display.groups, ...added], loose }
   })
 }
+
+/**
+ * Settings › Reset layout: every group and every loose position goes, on every display; each
+ * display's tools widget and bounds, and the remembered paths, stay. The items are then placed
+ * again like new ones (`placeNewItems`). Same object when nothing is placed anywhere.
+ */
+export function clearPlacements(layout: LayoutFile): LayoutFile {
+  const placed = layout.displays.some(
+    (display) => display.groups.length > 0 || Object.keys(display.loose).length > 0
+  )
+  if (!placed) return layout
+  return {
+    ...layout,
+    displays: layout.displays.map((display) => ({ ...display, groups: [], loose: {} }))
+  }
+}

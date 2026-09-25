@@ -534,6 +534,32 @@ describe('layout store', () => {
       })
     })
 
+    it('resetLayout (Phase 11) clears every group and position, then lays the icons out again', async () => {
+      const start = placed({ '1:1': { x: 300, y: 200 }, '1:2': { x: 0, y: 0 } })
+      start.displays[0].groups = [group('g', { items: ['1:3'] })]
+      start.displays.push({ ...newDisplayLayout(2, SECONDARY), loose: { '1:4': { x: 8, y: 8 } } })
+      const { bridge, store } = hydrated(start)
+
+      store
+        .getState()
+        .resetLayout(
+          [item('1:2', 'b'), item('1:1', 'a'), item('1:3', 'c'), item('1:4', 'd')],
+          PLACE
+        )
+
+      const layout = store.getState().layout
+      expect(layout.displays[0].groups).toEqual([])
+      expect(layout.displays[0].loose).toEqual({
+        '1:1': { x: 0, y: 0 },
+        '1:2': { x: 0, y: 100 },
+        '1:3': { x: 0, y: 200 },
+        '1:4': { x: 100, y: 0 }
+      })
+      expect(layout.displays[1].loose).toEqual({})
+      // One change, one save.
+      await vi.waitFor(() => expect(bridge.storage.save).toHaveBeenCalledOnce())
+    })
+
     it('onRenamed (main’s renamePath) updates one path entry and nothing else', () => {
       const start = placed({ '1:1': { x: 0, y: 0 }, '1:2': { x: 0, y: 100 } })
       const next = renamePath(start, '1:1', 'C:\\D\\renamed.txt')

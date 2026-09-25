@@ -244,6 +244,8 @@ export interface IpcEvents {
   'quickHide:changed': QuickHideState
   'display:changed': DisplayInfo
   'wallpaper:changed': WallpaperChanged
+  /** Phase 11: the tray's "Settings…" asks this display's window to open the inspector. */
+  'inspector:open': InspectorOpen
 }
 
 export type IpcEventName = keyof IpcEvents
@@ -259,7 +261,8 @@ export const EVENT_CHANNELS = [
   'peek:shortcut',
   'quickHide:changed',
   'display:changed',
-  'wallpaper:changed'
+  'wallpaper:changed',
+  'inspector:open'
 ] as const satisfies readonly IpcEventName[]
 
 // Compile-time proof that EVENT_CHANNELS lists every key of IpcEvents.
@@ -308,7 +311,7 @@ export const IPC = {
 /** `app:openExternal` opens only these URL schemes; main enforces it. */
 export const EXTERNAL_URL_PROTOCOLS = ['ms-settings:', 'https:'] as const
 
-export interface IpcRequests extends TimerRequests {
+export interface IpcRequests extends TimerRequests, SettingsRequests {
   'storage:load': { args: [store: StoreName]; result: StoreSnapshot }
   'storage:save': {
     args: [store: StoreName, request: SaveRequest<StoreFiles[StoreName]>]
@@ -382,4 +385,37 @@ export interface TimerNotifyRequest {
 export interface TimerRequests {
   /** true when a notification was shown; false when Settings turn them off or it was a repeat. */
   'timer:notify': { args: [request: TimerNotifyRequest]; result: boolean }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Phase 11: the settings inspector (src/main/app/settings-ipc.ts)
+
+export const SETTINGS_IPC = {
+  peekHold: 'peek:hold',
+  openDataFolder: 'app:openDataFolder',
+  info: 'app:info'
+} as const
+
+/** `inspector:open`: the window covering `displayId` opens its settings inspector. */
+export interface InspectorOpen {
+  displayId: number
+}
+
+/** About: what Taskyard is and where its data lives. */
+export interface AppInfo {
+  name: string
+  version: string
+  /** The folder with settings.json, layout.json, tasks.json and logs/. */
+  dataDir: string
+}
+
+export interface SettingsRequests {
+  /**
+   * The inspector opened (true: Peek on, held so the idle timer never hides it) or closed
+   * (false: the hold is released; the Peek then ends like any other).
+   */
+  'peek:hold': { args: [on: boolean]; result: void }
+  /** Opens the data folder in Explorer; false when Windows could not. */
+  'app:openDataFolder': { args: []; result: boolean }
+  'app:info': { args: []; result: AppInfo }
 }

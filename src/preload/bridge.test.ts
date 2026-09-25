@@ -116,6 +116,21 @@ describe('createTaskyardApi', () => {
     ])
   })
 
+  it('maps the settings inspector methods to their channels (Phase 11)', async () => {
+    const ipc = fakeIpcRenderer()
+    const api = createTaskyardApi(ipc, versions)
+    await api.peek.hold(true)
+    await api.peek.hold(false)
+    await api.app.openDataFolder()
+    await api.app.info()
+    expect(ipc.invoke.mock.calls).toEqual([
+      ['peek:hold', true],
+      ['peek:hold', false],
+      ['app:openDataFolder'],
+      ['app:info']
+    ])
+  })
+
   it('returns what main returned', async () => {
     const ipc = fakeIpcRenderer()
     ipc.invoke.mockResolvedValueOnce([{ id: 1 }])

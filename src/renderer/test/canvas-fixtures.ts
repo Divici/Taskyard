@@ -80,7 +80,10 @@ export function seedCanvas({
   }
   useDisplayStore.getState().setDisplayId(display.id)
   useDisplayStore.getState().receiveInfo(display)
-  useSettingsStore.getState().receive({ revision: 1, data: { ...defaultSettings(), ...settings } })
+  // An existing user: the first-run card (Phase 11) only shows where a test asks for it.
+  useSettingsStore
+    .getState()
+    .receive({ revision: 1, data: { ...defaultSettings(), firstRunDone: true, ...settings } })
   useLayoutStore.getState().receive({ revision: 1, data: layout })
   useItemsStore.getState().hydrate(items)
   return layout

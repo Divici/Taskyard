@@ -1,4 +1,11 @@
-import { IPC, isEventChannel, TIMER_IPC, type IpcEventName, type IpcEvents } from '@shared/ipc'
+import {
+  IPC,
+  isEventChannel,
+  SETTINGS_IPC,
+  TIMER_IPC,
+  type IpcEventName,
+  type IpcEvents
+} from '@shared/ipc'
 import type { TaskyardApi } from './api'
 
 /** The slice of Electron's `ipcRenderer` the bridge uses (injectable for tests). */
@@ -41,7 +48,9 @@ export function createTaskyardApi(
 
     app: {
       quit: () => invoke(IPC.app.quit),
-      openExternal: (url) => invoke(IPC.app.openExternal, url)
+      openExternal: (url) => invoke(IPC.app.openExternal, url),
+      openDataFolder: () => invoke(SETTINGS_IPC.openDataFolder),
+      info: () => invoke(SETTINGS_IPC.info)
     },
 
     display: {
@@ -54,7 +63,8 @@ export function createTaskyardApi(
       inputFocus: (focused) => invoke(IPC.peek.inputFocus, focused),
       activity: () => invoke(IPC.peek.activity),
       clickOutside: () => invoke(IPC.peek.clickOutside),
-      shortcutStatus: () => invoke(IPC.peek.shortcutStatus)
+      shortcutStatus: () => invoke(IPC.peek.shortcutStatus),
+      hold: (on) => invoke(SETTINGS_IPC.peekHold, on)
     },
 
     quickHide: {

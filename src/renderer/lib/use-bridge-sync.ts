@@ -5,6 +5,7 @@ import { getBridge } from './bridge'
 import { subscribeBridgeEvents } from './bridge-events'
 import { connectDesktop } from './desktop-sync'
 import { connectDisplay } from './display-sync'
+import { connectInspector } from './inspector-sync'
 import { connectPeek } from './peek-sync'
 import { connectQuickHide } from './quick-hide'
 import { connectReconcile } from './reconcile-sync'
@@ -37,8 +38,11 @@ export function useBridgeSync(): void {
     // Phase 9: Peek (state pull, idle/click-outside signals) and quick-hide across displays.
     const disconnectPeek = connectPeek(api)
     const disconnectQuickHide = connectQuickHide(api)
+    // Phase 11: the tray's "Settings…" opens this window's inspector when it names this display.
+    const disconnectInspector = connectInspector(api)
     void hydrateStores(api)
     return () => {
+      disconnectInspector()
       disconnectQuickHide()
       disconnectPeek()
       disconnectReconcile()

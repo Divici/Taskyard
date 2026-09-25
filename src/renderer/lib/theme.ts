@@ -10,6 +10,8 @@ import { useSettingsStore, type SettingsState } from '../stores/settings'
 // - `data-reduced-transparency` on <html> (present/absent): Windows' "Transparency effects" is off
 //   (`nativeTheme.prefersReducedTransparency`); glass turns opaque and unblurred.
 // - `--blur` and `--glass-opacity` on <html>: Settings › glass blur (px, capped) and opacity (0–1).
+// - Phase 11: `data-accent="cyan" | "blue" | "purple" | "white"` (tokens.css re-tints
+//   --accent-1/--accent-2 per theme) and `data-glow="on" | "off"` (off drops the outer bloom).
 
 /**
  * Blur radius cap. `backdrop-filter` cost grows with the radius and with every group on screen;
@@ -26,7 +28,15 @@ export interface ThemeAttributes {
   blurPx: number
   /** 0–1. */
   glassOpacity: number
+  accent: SettingsFile['accent']
+  glow: boolean
 }
+
+/** The settings the root attributes are built from. */
+export type ThemeSettings = Pick<
+  SettingsFile,
+  'theme' | 'glassBlur' | 'glassOpacity' | 'accent' | 'glow'
+>
 
 /** Chromium's own view of the OS theme, before main has answered (dark when unknown). */
 function prefersDark(): boolean {
@@ -49,7 +59,7 @@ export function resolveTheme(
 }
 
 export function themeAttributes(
-  settings: Pick<SettingsFile, 'theme' | 'glassBlur' | 'glassOpacity'>,
+  settings: ThemeSettings,
   system: ThemeInfo | null,
   fallbackDark = true
 ): ThemeAttributes {
@@ -57,7 +67,9 @@ export function themeAttributes(
     theme: resolveTheme(settings.theme, system, fallbackDark),
     reducedTransparency: system?.prefersReducedTransparency ?? false,
     blurPx: Math.min(Math.max(settings.glassBlur, 0), MAX_BLUR_PX),
-    glassOpacity: Math.min(Math.max(settings.glassOpacity, 0), 100) / 100
+    glassOpacity: Math.min(Math.max(settings.glassOpacity, 0), 100) / 100,
+    accent: settings.accent,
+    glow: settings.glow
   }
 }
 
@@ -66,15 +78,14 @@ export function applyTheme(root: HTMLElement, attrs: ThemeAttributes): void {
   root.toggleAttribute('data-reduced-transparency', attrs.reducedTransparency)
   root.style.setProperty('--blur', `${attrs.blurPx}px`)
   root.style.setProperty('--glass-opacity', String(attrs.glassOpacity))
+  root.dataset.accent = attrs.accent
+  root.dataset.glow = attrs.glow ? 'on' : 'off'
   // Native form controls and scrollbars follow the resolved theme too.
   root.style.colorScheme = attrs.theme
 }
 
 /** Before React renders: the defaults with Chromium's own OS-theme guess, so nothing flashes. */
-export function applyInitialTheme(
-  root: HTMLElement,
-  settings: Pick<SettingsFile, 'theme' | 'glassBlur' | 'glassOpacity'>
-): void {
+export function applyInitialTheme(root: HTMLElement, settings: ThemeSettings): void {
   applyTheme(root, themeAttributes(settings, null, prefersDark()))
 }
 

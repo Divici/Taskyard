@@ -12,6 +12,26 @@ expect.extend(axeMatchers)
 // dnd-kit's PointerSensor rely on both.
 installPointerPolyfills()
 
+// jsdom has no ResizeObserver; Radix's Slider measures its thumb with one (Phase 11 inspector).
+// Nothing is laid out in jsdom, so an observer that never reports is exact.
+if (!('ResizeObserver' in globalThis)) {
+  class ResizeObserverStub {
+    observe(): void {
+      // Nothing is laid out in jsdom: there is never a size to report.
+    }
+    unobserve(): void {
+      // As above.
+    }
+    disconnect(): void {
+      // As above.
+    }
+  }
+  Object.defineProperty(globalThis, 'ResizeObserver', {
+    value: ResizeObserverStub,
+    configurable: true
+  })
+}
+
 // jsdom cannot render canvas and logs "Not implemented" when axe-core probes it; report "no
 // context available" instead, as a browser would, and axe skips the pixel-based checks.
 HTMLCanvasElement.prototype.getContext = () => null

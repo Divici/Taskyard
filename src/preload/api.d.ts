@@ -1,5 +1,6 @@
 import type { DesktopItem } from '@shared/schema'
 import type {
+  AppInfo,
   DesktopActionResult,
   DesktopIcon,
   DisplayInfo,
@@ -46,6 +47,10 @@ export interface TaskyardApi {
     quit(): Promise<void>
     /** Only `ms-settings:` and `https:` URLs; anything else rejects. */
     openExternal(url: string): Promise<void>
+    /** Phase 11: opens the data folder (settings, layout, tasks, logs) in Explorer. */
+    openDataFolder(): Promise<boolean>
+    /** Phase 11: name, version and data folder (the inspector's About). */
+    info(): Promise<AppInfo>
   }
 
   display: {
@@ -66,6 +71,11 @@ export interface TaskyardApi {
     clickOutside(): Promise<void>
     /** The Peek shortcut's registration; then follow `peek:shortcut`. */
     shortcutStatus(): Promise<ShortcutStatus>
+    /**
+     * Phase 11: the settings inspector opened (Peek on, held until it closes) or closed (the hold
+     * is released; the Peek ends on the idle timer or a click outside).
+     */
+    hold(on: boolean): Promise<void>
   }
 
   /** Phase 9: quick-hide, shared by every display (never persisted). */

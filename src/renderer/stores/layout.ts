@@ -5,6 +5,7 @@ import type { StoreSnapshot } from '@shared/ipc'
 import {
   applyAutoOrganize,
   bringGroupToFront,
+  clearPlacements,
   deleteGroup,
   ensureDisplay,
   hasDisplay,
@@ -136,6 +137,11 @@ export interface LayoutState {
   applyAutoOrganize(displayId: number, groups: Group[]): void
   /** Lays the display's loose icons out again, column-first around the groups, in `order`. */
   arrangeLoose(displayId: number, order: string[], area: Rect, cell: Size): void
+  /**
+   * Phase 11, Settings › Reset layout: every group and loose position on every display goes, and
+   * `items` are placed again as new icons on `place` (one change, one save).
+   */
+  resetLayout(items: PresentItem[], place: PlaceTarget): void
 
   // ---- Phase 8: drops ------------------------------------------------------------------------
 
@@ -320,6 +326,12 @@ export function createLayoutStore(
       applyAutoOrganize(displayId, groups) {
         const created = structuredClone(groups)
         doc.current.mutate((layout) => applyAutoOrganize(layout, displayId, created))
+      },
+
+      resetLayout(items, place) {
+        const present = copyPresent(items)
+        const target = copyPlace(place)
+        doc.current.mutate((layout) => placeNewItems(clearPlacements(layout), present, target))
       },
 
       arrangeLoose(displayId, order, area, cell) {

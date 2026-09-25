@@ -58,8 +58,20 @@ export function taskyardEnv(profile: Profile): Record<string, string> {
   return env
 }
 
-export function launchTaskyard(profile: Profile): Promise<ElectronApplication> {
-  return electron.launch({ args: [MAIN_ENTRY], env: taskyardEnv(profile) })
+export interface LaunchOptions {
+  /**
+   * Launch as Windows does at sign-in (`--autostart`: tray only, no start-up Peek). The default,
+   * so specs start from the steady state; a user launch (false) Peeks for up to 8 s (Phase 11).
+   */
+  autostart?: boolean
+}
+
+export function launchTaskyard(
+  profile: Profile,
+  { autostart = true }: LaunchOptions = {}
+): Promise<ElectronApplication> {
+  const args = autostart ? [MAIN_ENTRY, '--autostart'] : [MAIN_ENTRY]
+  return electron.launch({ args, env: taskyardEnv(profile) })
 }
 
 /**

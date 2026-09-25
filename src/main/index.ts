@@ -13,12 +13,17 @@ import {
   powerMonitor,
   protocol,
   screen,
-  shell
+  shell,
+  Tray
 } from 'electron'
 import log from 'electron-log/main'
 import { APP_ID, APP_NAME } from '@shared/app-info'
 import type { DesktopIcon } from '@shared/ipc'
+import trayIconPath from '../../build/icon.ico?asset'
+import { createAutostart, isAutostartLaunch } from './app/autostart'
+import { appVersion } from './app/app-version'
 import { boot, STOP_BOOT } from './app/boot'
+import { installCrashLogging } from './app/crash-log'
 import { applyUserDataOverride, ENV, resolveLogLevel } from './app/env'
 import { configureLogger, defaultLogDir, LOG_FILE_NAME } from './app/logger'
 import { installQuitPath } from './app/quit-path'
@@ -27,6 +32,9 @@ import { createPeekShortcuts, registerPeekIpc, type PeekShortcuts } from './app/
 import { acquireSingleInstanceLock } from './app/single-instance'
 import { startDesktop } from './app/start-desktop'
 import { createTimerNotifier, registerTimerIpc } from './app/notifications'
+import { registerSettingsIpc } from './app/settings-ipc'
+import { timerStatusText, toggleToolsWidget, toolsShownAnywhere } from './app/tools-control'
+import { createAppTray, type AppTray } from './app/tray'
 import { createThemeService, registerThemeIpc, type ThemeService } from './app/theme-service'
 import { registerDesktopIpc } from './desktop/desktop-ipc'
 import { cursorOverOtherWindow, registerDragOutIpc } from './desktop/dnd-ipc'
@@ -45,6 +53,7 @@ import { createIconService, type IconService } from './desktop/icon-service'
 import type { IpcEventEmitter } from './ipc/events'
 import { registerIpcHandlers } from './ipc/handlers'
 import { createSenderGuard } from './ipc/sender-guard'
+import { startDisplayMatching } from './storage/display-match'
 import { replayJournal } from './storage/journal-replay'
 import { createStorage } from './storage/stores'
 import { createWin32Api } from './win32'
@@ -89,8 +98,9 @@ function startPrimaryInstance(): void {
     logDir,
     level: resolveLogLevel(process.env[ENV.logLevel])
   })
-  log.errorHandler.startCatching({ showDialog: false })
-  log.info(`app: starting ${APP_NAME} ${app.getVersion()} (${app.isPackaged ? 'packaged' : 'dev'})`)
+  // Phase 11: an unhandled main error is logged and the app keeps running (no dialog, no exit).
+  installCrashLogging(process, log)
+  log.info(`app: starting ${APP_NAME} ${appVersion(app)} (${app.isPackaged ? 'packaged' : 'dev'})`)
 
   // Starts before `ready` so koffi loads (and the user32 probe logs) while Electron boots.
   const win32 = createWin32Api({
@@ -126,7 +136,16 @@ function startPrimaryInstance(): void {
     log
   })
   peekShortcuts = shortcuts
-  const quickHide = createQuickHide({ emit: (event, payload) => events.emit(event, payload) })
+  // Phase 11: the tray icon (created with the desktop windows; its menu follows the state).
+  let tray: AppTray | null = null
+  const quickHide = createQuickHide({
+    emit: (event, payload) => {
+      events.emit(event, payload)
+      tray?.refresh()
+    }
+  })
+  // Phase 11: Start with Windows follows Settings (packaged builds only).
+  const autostart = createAutostart({ app, log })
 
   // Every accepted save — any window's, or main's own — reaches every window, the saver too,
   // with its new revision (optimistic concurrency; the client side is src/shared/sync-doc.ts).
@@ -136,7 +155,12 @@ function startPrimaryInstance(): void {
     onChange: (change) => {
       events.emit('storage:changed', change)
       // Phase 9 (and Phase 11's Settings UI): a changed peekShortcut is registered at once.
-      if (change.store === 'settings') shortcuts.applySettings(change.data)
+      if (change.store === 'settings') {
+        shortcuts.applySettings(change.data)
+        autostart.sync(change.data)
+      }
+      // The tray's ticks (Tools widget, Start with Windows) and timer tooltip follow every store.
+      tray?.refresh()
     }
   })
 
@@ -149,7 +173,19 @@ function startPrimaryInstance(): void {
   })
   registerPeekIpc(ipcMain, trust, { shortcuts, peeking: () => desktop?.peeking ?? false })
   registerQuickHideIpc(ipcMain, trust, quickHide)
-  app.on('will-quit', () => shortcuts.dispose())
+  app.on('will-quit', () => {
+    shortcuts.dispose()
+    tray?.dispose()
+    tray = null
+  })
+  // Phase 11: the settings inspector's Peek hold, the data folder and About.
+  registerSettingsIpc(ipcMain, trust, {
+    peek: () => desktop,
+    openPath: (path) => shell.openPath(path),
+    dataDir: app.getPath('userData'),
+    info: { name: APP_NAME, version: appVersion(app) },
+    log
+  })
   // The desktop folders' items (Phase 4). The service needs the Win32 api, which exists once the
   // windows do, so it is created in the scan step; desktop:* requests wait for it.
   const desktopDirs = resolveDesktopDirs({ env: process.env, userDesktop: app.getPath('desktop') })
@@ -227,11 +263,15 @@ function startPrimaryInstance(): void {
     desktop: () => desktop,
     log,
     stopWatching: async () => {
+      stopDisplayMatching()
       theme?.stop()
       stopIcons()
       await Promise.all([desktopFiles?.stop(), wallpaper?.stop()])
     }
   })
+
+  // Phase 11: saved display entries re-matched to the connected displays (main is the writer).
+  let stopDisplayMatching: () => void = () => {}
 
   // LOCKED order: stores load → journal replay → windows → scan → watch. Stores load and the
   // journal replays while Electron initialises; the windows wait for ready. Without desktop
@@ -246,6 +286,9 @@ function startPrimaryInstance(): void {
         await app.whenReady()
         app.setAppUserModelId(APP_ID)
         const selection = await win32
+        // Before any window registers its display: an entry whose display id changed (reboot,
+        // re-plug) is re-matched first, so no window starts from an empty entry.
+        stopDisplayMatching = startDisplayMatching({ screen, storage, log })
         theme ??= createTheme()
         theme.start()
         if (selection.kind !== 'unavailable') wallpaper = startWallpaper(selection.api)
@@ -277,6 +320,15 @@ function startPrimaryInstance(): void {
         if (desktop === null) return STOP_BOOT
         // Phase 9: the Peek shortcut, once the app is ready and the settings are loaded.
         shortcuts.start(storage.settings.get())
+        // Phase 11: the login item follows Settings; the tray; a launch by the user (not by
+        // Windows at sign-in) Peeks so Taskyard shows over whatever is open.
+        autostart.sync(storage.settings.get())
+        tray = startTray()
+        if (isAutostartLaunch(process.argv)) {
+          log.info('app: started by Windows at sign-in (tray only, no Peek)')
+        } else {
+          shortcuts.showPeek()
+        }
         void wallpaper?.start()
         return desktop
       },
@@ -316,6 +368,47 @@ function startPrimaryInstance(): void {
     // createWindows threw outside startDesktop (already logged by boot): quit.
     { onFatal: () => app.quit() }
   )
+
+  /** Phase 11: the notification-area icon and its menu. */
+  function startTray(): AppTray | null {
+    try {
+      const icon = nativeImage.createFromPath(trayIconPath)
+      const appTray = createAppTray({
+        createTray: () => new Tray(icon),
+        buildMenu: (template) => Menu.buildFromTemplate(template),
+        state: () => ({
+          quickHidden: quickHide.hidden,
+          toolsShown: toolsShownAnywhere(storage.layout.get(), storage.settings.get()),
+          autostart: storage.settings.get().autostart,
+          timerText: timerStatusText(storage.tasks.get(), Date.now())
+        }),
+        actions: {
+          toggleQuickHide: () => quickHide.set(!quickHide.hidden),
+          togglePeek: () => shortcuts.togglePeek(),
+          toggleTools: () => {
+            toggleToolsWidget(storage, screen.getPrimaryDisplay().id)
+          },
+          openSettings: () =>
+            events.emit('inspector:open', { displayId: screen.getPrimaryDisplay().id }),
+          refreshDesktop: () => {
+            void desktopFiles
+              ?.rescan()
+              .catch((error: unknown) => log.error('tray: refreshing the desktop failed', error))
+          },
+          setAutostart: (on) => {
+            storage.settings.save({ ...storage.settings.get(), autostart: on })
+          },
+          quit: () => app.quit()
+        }
+      })
+      log.info(`tray: ready${icon.isEmpty() ? ' (the icon image failed to load)' : ''}`)
+      return appTray
+    } catch (error) {
+      // No tray (e.g. the icon failed to load) must not stop the desktop.
+      log.error('tray: could not create the tray icon', error)
+      return null
+    }
+  }
 
   /** The wallpaper service, its taskyard:// handler, and a refresh on every display change. */
   function startWallpaper(api: Win32Api): WallpaperService {

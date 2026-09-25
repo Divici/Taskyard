@@ -20,6 +20,8 @@ afterEach(() => {
   const root = document.documentElement
   root.removeAttribute('data-theme')
   root.removeAttribute('data-reduced-transparency')
+  root.removeAttribute('data-accent')
+  root.removeAttribute('data-glow')
   root.removeAttribute('style')
 })
 
@@ -54,6 +56,20 @@ describe('themeAttributes / applyTheme', () => {
   it(`caps the blur at ${MAX_BLUR_PX} px (many blurred groups must hold 60 fps)`, () => {
     const attrs = themeAttributes({ ...defaultSettings(), glassBlur: 40 }, DARK_OS)
     expect(attrs.blurPx).toBe(MAX_BLUR_PX)
+  })
+
+  it('Phase 11: writes the accent colour and the glow switch', () => {
+    const root = document.createElement('div')
+    applyTheme(root, themeAttributes(defaultSettings(), DARK_OS))
+    expect(root.dataset.accent).toBe('cyan')
+    expect(root.dataset.glow).toBe('on')
+
+    applyTheme(
+      root,
+      themeAttributes({ ...defaultSettings(), accent: 'purple', glow: false }, DARK_OS)
+    )
+    expect(root.dataset.accent).toBe('purple')
+    expect(root.dataset.glow).toBe('off')
   })
 
   it('sets data-reduced-transparency when Windows has transparency effects off', () => {
@@ -99,6 +115,9 @@ describe('connectTheme', () => {
     expect(document.documentElement.dataset.theme).toBe('dark')
     loadSettings({ theme: 'system', glassBlur: 8 }, 3)
     expect(document.documentElement.style.getPropertyValue('--blur')).toBe('8px')
+    loadSettings({ theme: 'system', accent: 'white', glow: false }, 4)
+    expect(document.documentElement.dataset.accent).toBe('white')
+    expect(document.documentElement.dataset.glow).toBe('off')
     disconnect()
   })
 

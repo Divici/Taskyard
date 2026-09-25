@@ -5,6 +5,7 @@ import {
   EXTERNAL_URL_PROTOCOLS,
   IPC,
   isEventChannel,
+  SETTINGS_IPC,
   STORE_NAMES
 } from './ipc'
 
@@ -67,7 +68,8 @@ describe('IPC channel names', () => {
         'peek:shortcut',
         'quickHide:changed',
         'display:changed',
-        'wallpaper:changed'
+        'wallpaper:changed',
+        'inspector:open'
       ].sort()
     )
   })
@@ -82,5 +84,13 @@ describe('IPC channel names', () => {
   it('names the persisted renderer stores and the external URL allow-list', () => {
     expect(STORE_NAMES).toEqual(['settings', 'layout', 'tasks'])
     expect(EXTERNAL_URL_PROTOCOLS).toEqual(['ms-settings:', 'https:'])
+  })
+
+  it('names the Phase 11 settings inspector channels', () => {
+    expect(SETTINGS_IPC).toEqual({
+      peekHold: 'peek:hold',
+      openDataFolder: 'app:openDataFolder',
+      info: 'app:info'
+    })
   })
 })

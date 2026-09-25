@@ -35,6 +35,8 @@ export interface FakeBridge extends TaskyardApi {
   app: {
     quit: Mocked<Api['app']['quit']>
     openExternal: Mocked<Api['app']['openExternal']>
+    openDataFolder: Mocked<Api['app']['openDataFolder']>
+    info: Mocked<Api['app']['info']>
   }
   display: {
     get: Mocked<Api['display']['get']>
@@ -144,7 +146,14 @@ export function createFakeBridge(options: FakeBridgeOptions = {}): FakeBridge {
     },
     app: {
       quit: vi.fn(async () => {}) as FakeBridge['app']['quit'],
-      openExternal: vi.fn(async () => {}) as FakeBridge['app']['openExternal']
+      openExternal: vi.fn(async () => {}) as FakeBridge['app']['openExternal'],
+      // Phase 11: the inspector's Data and About sections.
+      openDataFolder: vi.fn(async () => true) as FakeBridge['app']['openDataFolder'],
+      info: vi.fn(async () => ({
+        name: 'Taskyard',
+        version: '0.1.0',
+        dataDir: String.raw`C:\Users\me\AppData\Roaming\Taskyard`
+      })) as FakeBridge['app']['info']
     },
     display: {
       get: vi.fn(async () => PRIMARY) as FakeBridge['display']['get'],
@@ -178,7 +187,8 @@ export function createFakeBridge(options: FakeBridgeOptions = {}): FakeBridge {
         accelerator: 'Ctrl+Alt+Space',
         active: 'Ctrl+Alt+Space',
         error: null
-      }))
+      })),
+      hold: vi.fn(async () => {})
     } as unknown as FakeBridge['peek'],
     quickHide: {
       get: vi.fn(async () => false),

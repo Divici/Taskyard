@@ -103,6 +103,8 @@ test('a right-button drag on the desktop draws a group around the icons (no menu
     const page = await primaryWindow(app)
     const notes = page.getByRole('option', { name: 'Notes', exact: true })
     await expect(notes).toBeVisible()
+    // The first-run card (Phase 11) sits mid-screen, where the second drag below happens.
+    await page.getByRole('button', { name: 'Keep my desktop as it is' }).click()
     const icon = await box(notes)
 
     // From above-left of the first column to below the second icon.

@@ -76,8 +76,8 @@ test("each desktop window paints its own display's wallpaper over taskyard://, u
     }
 
     // Theme and glass: the root carries the resolved theme and the settings' glass values, and
-    // a glass pane (the empty-desktop hint card) blurs the wallpaper behind it (unless
-    // transparency effects are off).
+    // a glass pane (the first-run card on a fresh profile, Phase 11) blurs the wallpaper behind
+    // it (unless transparency effects are off).
     const page = await primaryWindow(taskyard)
     const root = await page.evaluate(() => ({
       theme: document.documentElement.dataset.theme,
@@ -86,7 +86,7 @@ test("each desktop window paints its own display's wallpaper over taskyard://, u
     }))
     expect(['dark', 'light']).toContain(root.theme)
     expect(root.blur).toBe('16px')
-    const card = page.getByRole('region', { name: 'Tidy up your desktop' })
+    const card = page.getByRole('dialog', { name: 'Welcome to Taskyard' })
     await expect(card).toContainClass('glass')
     const glass = await card.evaluate((el) => getComputedStyle(el).backdropFilter)
     if (root.reduced) expect(glass).toBe('none')

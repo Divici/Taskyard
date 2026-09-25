@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { emptyLayout, newDisplayLayout } from './defaults'
 import {
   bringGroupToFront,
+  clearPlacements,
   DEFAULT_LOOSE_CELL,
   type GroupRect,
   deleteGroup,
@@ -440,5 +441,39 @@ describe("renamePath (main applies it when a file is renamed, ours or Explorer's
 
     expect(renamePath(input, '1:1', 'C:\\D\\a.txt')).toBe(input)
     expect(renamePath(input, '9:9', 'C:\\D\\z.txt')).toBe(input)
+  })
+})
+
+describe('clearPlacements (Settings › Reset layout)', () => {
+  it('removes every group and loose position on every display; widget, bounds and paths stay', () => {
+    const tools = { ...newDisplayLayout(1, PRIMARY).tools, x: 900, rolledUp: true }
+    const layout: LayoutFile = {
+      ...emptyLayout(),
+      displays: [
+        {
+          ...newDisplayLayout(1, PRIMARY),
+          groups: [group('a')],
+          loose: { '1:1': { x: 8, y: 8 } },
+          tools
+        },
+        { ...newDisplayLayout(2, SECONDARY), groups: [group('b')] }
+      ],
+      paths: { '1:1': String.raw`C:\Users\me\Desktop\a.txt` },
+      lastSeen: { '1:9': 5 }
+    }
+    const next = clearPlacements(layout)
+    expect(next.displays.map((d) => [d.displayId, d.groups, d.loose])).toEqual([
+      [1, [], {}],
+      [2, [], {}]
+    ])
+    expect(next.displays[0].tools).toEqual(tools)
+    expect(next.displays[1].bounds).toEqual(SECONDARY)
+    expect(next.paths).toBe(layout.paths)
+    expect(next.lastSeen).toBe(layout.lastSeen)
+  })
+
+  it('is the same object when there is nothing to clear', () => {
+    const layout: LayoutFile = { ...emptyLayout(), displays: [newDisplayLayout(1, PRIMARY)] }
+    expect(clearPlacements(layout)).toBe(layout)
   })
 })

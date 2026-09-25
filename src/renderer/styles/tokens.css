@@ -77,3 +77,48 @@
   --glass-highlight: rgb(255 255 255 / 0.7);
   --glass-noise-opacity: 0.06;
 }
+
+/* ----------------------------------------------------------------------------
+   Phase 11: Settings › accent colour (`data-accent` on <html>, lib/theme.ts). "cyan" is each
+   theme's own palette above. The light theme darkens every accent so it reads on frosted white,
+   and maps "white" to graphite (white on white would vanish).
+   ------------------------------------------------------------------------- */
+
+[data-theme='dark'][data-accent='blue'] {
+  --accent-1: #3d9bff;
+  --accent-2: #0057d9;
+}
+
+[data-theme='dark'][data-accent='purple'] {
+  --accent-1: #b77dff;
+  --accent-2: #8e2de2;
+}
+
+[data-theme='dark'][data-accent='white'] {
+  --accent-1: #ffffff;
+  --accent-2: #9fb3c8;
+}
+
+[data-theme='light'][data-accent='blue'] {
+  --accent-1: #1d4ed8;
+  --accent-2: #3b82f6;
+}
+
+[data-theme='light'][data-accent='purple'] {
+  --accent-1: #7c3aed;
+  --accent-2: #a855f7;
+}
+
+[data-theme='light'][data-accent='white'] {
+  --accent-1: #334155;
+  --accent-2: #64748b;
+}
+
+/* The outer bloom follows the accent; Settings › Emissive glow off removes it. */
+[data-accent] {
+  --glow: 0 8px 32px color-mix(in srgb, var(--accent-2) 20%, transparent);
+}
+
+[data-glow='off'] {
+  --glow: 0 0 0 transparent;
+}
