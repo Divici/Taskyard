@@ -20,7 +20,8 @@ import {
   desktopWindowOptions,
   desktopWindowUrl,
   hwndFromHandle,
-  type DesktopWindowDeps
+  type DesktopWindowDeps,
+  WM_SETTINGCHANGE
 } from './desktop-window'
 
 const PRELOAD = 'C:\\app\\out\\preload\\index.js'
@@ -541,6 +542,34 @@ describe('createDesktopWindow', () => {
     only().becomeReady()
 
     expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('z-order guard not installed'))
+  })
+
+  it('reports WM_SETTINGCHANGE (wallpaper, theme, colours) to onSettingChange', () => {
+    const onSettingChange = vi.fn()
+    createDesktopWindow(PRIMARY_DISPLAY, { ...deps, onSettingChange })
+    expect(only().hookedMessages()).toEqual([WM_SETTINGCHANGE])
+
+    only().sendWindowMessage(WM_SETTINGCHANGE)
+    only().sendWindowMessage(0x0010) // not hooked: nothing
+
+    expect(onSettingChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('hooks no window message without an onSettingChange listener', () => {
+    createDesktopWindow(PRIMARY_DISPLAY, deps)
+    expect(only().hookedMessages()).toEqual([])
+  })
+
+  it('keeps a throwing onSettingChange out of the window message loop (logged)', () => {
+    const failure = new Error('boom')
+    createDesktopWindow(PRIMARY_DISPLAY, {
+      ...deps,
+      onSettingChange: () => {
+        throw failure
+      }
+    })
+    expect(() => only().sendWindowMessage(WM_SETTINGCHANGE)).not.toThrow()
+    expect(log.error).toHaveBeenCalledWith(expect.stringContaining('WM_SETTINGCHANGE'), failure)
   })
 
   it('denies window.open and logs renderer crashes', () => {

@@ -1,0 +1,79 @@
+/* ============================================================================
+   Taskyard design tokens.
+
+   Two themes, selected by `data-theme` on <html> (src/renderer/lib/theme.ts):
+   - dark  = "Flux" (design/designInpo.html): black and deep blue, cyan/electric-blue accents.
+   - light = "Neo-Tactile" frosted glass (design/taskbarDesign.jpg).
+   `--blur` and `--glass-opacity` are written on <html> from Settings; the values below are
+   the defaults until the settings load (16 px, 40 %).
+   ========================================================================= */
+
+:root {
+  /* Shared scale */
+  --radius-1: 12px;
+  --radius-2: 18px;
+  --radius-3: 32px;
+  --radius-4: 40px;
+
+  --space-1: 12px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+
+  --font-size-1: 10px;
+  --font-size-2: 11px;
+  --font-size-3: 12px;
+  --font-size-4: 13px;
+  --font-size-5: 14px;
+
+  --font-ui:
+    'Segoe UI Variable Text', 'Segoe UI Variable', 'Inter Variable', 'Segoe UI', sans-serif;
+
+  /* From Settings (theme.ts); defaults until they load. */
+  --blur: 16px;
+  --glass-opacity: 0.4;
+
+  /* The desktop layer's own background, behind the wallpaper (the window is opaque black). */
+  --bg: #000;
+  --deep-blue: #001233;
+  --glow: 0 8px 32px rgba(0, 119, 255, 0.2);
+
+  /* Acrylic-style grain on glass (Decision 3); tinted per theme by its opacity. */
+  --glass-noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Dark: Flux. Also the default before the theme resolves. */
+:root,
+[data-theme='dark'] {
+  --accent-1: #00f2ff;
+  --accent-2: #0077ff;
+  --glass-bg: rgba(0, 15, 40, 0.4);
+  --glass-border: rgba(0, 242, 255, 0.15);
+  --text-primary: rgb(255 255 255 / 1);
+  --text-secondary: rgb(255 255 255 / 0.7);
+  --text-tertiary: rgb(255 255 255 / 0.5);
+
+  /* --glass-bg as channels, so Settings' opacity can scale it (40 % = the value above). */
+  --glass-tint: 0 15 40;
+  --glass-alpha: var(--glass-opacity);
+  --glass-highlight: rgb(255 255 255 / 0.08);
+  --glass-noise-opacity: 0.05;
+}
+
+/* Light: Neo-Tactile frosted glass. */
+[data-theme='light'] {
+  --accent-1: #3b6ef5;
+  --accent-2: #00d5e6;
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.45);
+  --text-primary: rgb(11 18 32 / 1);
+  --text-secondary: rgb(11 18 32 / 0.7);
+  --text-tertiary: rgb(11 18 32 / 0.5);
+
+  /* 40 % in Settings = the design's .62; the light pane stays 22 points more opaque. */
+  --glass-tint: 255 255 255;
+  --glass-alpha: min(1, calc(var(--glass-opacity) + 0.22));
+  --glass-highlight: rgb(255 255 255 / 0.7);
+  --glass-noise-opacity: 0.06;
+}

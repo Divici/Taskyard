@@ -2,6 +2,7 @@
 // Types and plain constants only: the preload bundles this file, so it must never import zod
 // (inbound validation lives in src/main/ipc/handlers.ts).
 import type { DesktopItem, LayoutFile, Rect, SettingsFile, TasksFile } from './schema'
+import type { PxRect, WallpaperPosition } from './wallpaper-geometry'
 
 // ---------------------------------------------------------------------------------------------
 // Storage
@@ -177,6 +178,33 @@ export interface WallpaperChanged {
   version: number
 }
 
+/**
+ * Why a display does not show the picture Windows was asked to show (for the settings hint):
+ * - `solid-color`: Windows has no picture on this display; its desktop colour is painted.
+ * - `transcoded`: the picture cannot be shown (undecodable, e.g. HDR `.jxr`, or missing), so
+ *   Windows' own converted copy (`Themes\Transcoded_00N`) is shown instead.
+ * - `color-fallback`: the picture cannot be shown and there is no usable copy: colour only.
+ * - `unavailable`: Taskyard could not read the Windows wallpaper at all: colour only.
+ */
+export type WallpaperHint = 'solid-color' | 'transcoded' | 'color-fallback' | 'unavailable'
+
+/** What one display's wallpaper layer paints (`wallpaper:get`; refetched on `wallpaper:changed`). */
+export interface WallpaperInfo {
+  displayId: number
+  /** Bumped whenever anything below changes. */
+  version: number
+  /** `taskyard://wallpaper/<displayId>?v=<version>`, or null: paint `color` only. */
+  url: string | null
+  position: WallpaperPosition
+  /** The desktop background colour (`#rrggbb`), painted under the picture (fit/center bars). */
+  color: string
+  scaleFactor: number
+  /** This display and the whole virtual screen, in physical pixels (Windows' layout unit). */
+  displayRectPx: PxRect
+  virtualRectPx: PxRect
+  hint: WallpaperHint | null
+}
+
 export interface IpcEvents {
   'desktop:changed': DesktopChange
   'desktop:renamed': DesktopRenamed
@@ -228,7 +256,9 @@ export const IPC = {
     moveToDesktop: 'desktop:moveToDesktop',
     undoMove: 'desktop:undoMove',
     rescan: 'desktop:rescan'
-  }
+  },
+  theme: { get: 'theme:get' },
+  wallpaper: { get: 'wallpaper:get' }
 } as const
 
 /** `app:openExternal` opens only these URL schemes; main enforces it. */
@@ -260,6 +290,10 @@ export interface IpcRequests {
   'desktop:undoMove': { args: [token: string]; result: UndoMoveResult }
   /** Scans again and re-emits the full list as desktop:changed. */
   'desktop:rescan': { args: []; result: void }
+  /** The Windows app theme and transparency setting (then followed with theme:changed). */
+  'theme:get': { args: []; result: ThemeInfo }
+  /** The display's wallpaper; null when main knows no display with that id. */
+  'wallpaper:get': { args: [displayId: number]; result: WallpaperInfo | null }
 }
 
 export type RequestChannel = keyof IpcRequests

@@ -10,7 +10,9 @@ import type {
   StorageStatus,
   StoreFiles,
   StoreName,
-  StoreSnapshot
+  StoreSnapshot,
+  ThemeInfo,
+  WallpaperInfo
 } from '@shared/ipc'
 import type { TaskyardApi } from '../../preload/api'
 
@@ -38,6 +40,8 @@ export interface FakeBridge extends TaskyardApi {
     list: Mocked<Api['display']['list']>
   }
   desktop: { [K in keyof Api['desktop']]: Mocked<Api['desktop'][K]> }
+  theme: { get: Mocked<Api['theme']['get']> }
+  wallpaper: { get: Mocked<Api['wallpaper']['get']> }
   on: Mocked<Api['on']>
   emit<E extends IpcEventName>(event: E, payload: IpcEvents[E]): void
   listenerCount(event: IpcEventName): number
@@ -58,6 +62,28 @@ const PRIMARY: DisplayInfo = {
   bounds: { x: 0, y: 0, width: 2560, height: 1440 },
   workArea: { x: 0, y: 0, width: 2560, height: 1392 },
   scaleFactor: 1.5
+}
+
+/** Windows in dark mode with transparency effects on. */
+export const FAKE_THEME: ThemeInfo = {
+  shouldUseDarkColors: true,
+  prefersReducedTransparency: false
+}
+
+/** Main's first wallpaper version for a display (not the schema version). */
+const FIRST_WALLPAPER_VERSION = 1
+
+/** The primary display (2560×1440 px at 150 %) showing a letterboxed picture. */
+export const FAKE_WALLPAPER: WallpaperInfo = {
+  displayId: 1,
+  version: FIRST_WALLPAPER_VERSION,
+  url: 'taskyard://wallpaper/1?v=1',
+  position: 'fit',
+  color: '#000000',
+  scaleFactor: 1.5,
+  displayRectPx: { x: 0, y: 0, width: 2560, height: 1440 },
+  virtualRectPx: { x: 0, y: 0, width: 2560, height: 1440 },
+  hint: null
 }
 
 export function createFakeBridge(options: FakeBridgeOptions = {}): FakeBridge {
@@ -128,6 +154,14 @@ export function createFakeBridge(options: FakeBridgeOptions = {}): FakeBridge {
       undoMove: vi.fn(async () => ({ ok: true as const, path: '' })),
       rescan: vi.fn(async () => {})
     } as unknown as FakeBridge['desktop'],
+    theme: {
+      get: vi.fn(async () => ({ ...FAKE_THEME })) as FakeBridge['theme']['get']
+    },
+    wallpaper: {
+      get: vi.fn(async (displayId: number) =>
+        displayId === FAKE_WALLPAPER.displayId ? structuredClone(FAKE_WALLPAPER) : null
+      ) as FakeBridge['wallpaper']['get']
+    },
     on: on as unknown as FakeBridge['on'],
     emit(event, payload) {
       for (const listener of listeners.get(event) ?? []) (listener as (p: unknown) => void)(payload)

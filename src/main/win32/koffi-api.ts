@@ -1,5 +1,6 @@
-import type { Hwnd, RegistryHive, Unsubscribe, Win32Api, ZOrderMode } from './api'
+import type { Hwnd, PixelRect, RegistryHive, Unsubscribe, Win32Api, ZOrderMode } from './api'
 import { loadWin32Bindings, type CallbackHandle, type Koffi, type Win32Bindings } from './bindings'
+import { createComRuntime, loadOle32 } from './com'
 import {
   ERROR_FILE_NOT_FOUND,
   ERROR_MORE_DATA,
@@ -30,12 +31,19 @@ import {
   WINEVENT_OUTOFCONTEXT,
   SC_CLOSE,
   SC_COMMAND_MASK,
+  SPI_GETDESKWALLPAPER,
   WM_NCDESTROY,
   WM_SYSCOMMAND,
   WM_WINDOWPOSCHANGING
 } from './constants'
 import { toExtendedLengthPath } from './long-path'
 import { resolveShellWindow, type WindowTree } from './shell-window'
+import {
+  createDesktopWallpaperReader,
+  createMonitorWallpaperReader,
+  desktopWallpaperProtos,
+  type LegacyWallpaper
+} from './wallpaper'
 import {
   guardTarget,
   isAboveInZOrder,
@@ -55,6 +63,8 @@ export interface KoffiWin32ApiOptions {
   log: Win32Log
   /** Injected in headless tests; loaded from the real DLLs otherwise. */
   bindings?: Win32Bindings
+  /** Phase 6: injected in headless tests; IDesktopWallpaper over COM (wallpaper.ts) otherwise. */
+  wallpaper?: (rectPx: PixelRect) => ReturnType<Win32Api['getWallpaperForMonitor']>
 }
 
 /** `uIdSubclass` for Taskyard's guard ('Ty'); one guard per window. */
@@ -71,11 +81,10 @@ interface Guard {
 }
 
 /** `Win32Api` over real user32/comctl32/advapi32/kernel32 calls through koffi. */
-export function createKoffiWin32Api(
-  koffi: Koffi,
-  { log, bindings }: KoffiWin32ApiOptions
-): Win32Api {
+export function createKoffiWin32Api(koffi: Koffi, options: KoffiWin32ApiOptions): Win32Api {
+  const { log, bindings } = options
   const b = bindings ?? loadWin32Bindings(koffi)
+  let wallpaper = options.wallpaper
   const guards = new Map<Hwnd, Guard>()
   /** `hwnd|what` of z-order changes whose failure was already logged (until one succeeds). */
   const failing = new Set<string>()
@@ -270,9 +279,8 @@ export function createKoffiWin32Api(
 
     regGetString: (hive, key, value) => readRegistryString(b, HKEYS[hive], key, value),
 
-    getWallpaperForMonitor() {
-      throw new Error('getWallpaperForMonitor is not implemented until Phase 6')
-    },
+    // Phase 6: wallpaper (read only).
+    getWallpaperForMonitor: (rectPx) => (wallpaper ??= wallpaperReader(koffi, b, log))(rectPx),
 
     extractIcon() {
       throw new Error('extractIcon is not implemented until Phase 5')
@@ -300,4 +308,38 @@ function readRegistryString(
     if (status === ERROR_SUCCESS) return data.toString('utf16le', 0, size[0]).replace(/\0+$/, '')
   }
   throw new Error(`RegGetValueW(${key}\\${value}) failed with status ${status}`)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Phase 6: wallpaper
+
+/** MAX_PATH UTF-16 characters: what SPI_GETDESKWALLPAPER can return. */
+const DESK_WALLPAPER_CHARS = 260
+
+/** SPI_GETDESKWALLPAPER + WallpaperStyle/TileWallpaper: the pre-IDesktopWallpaper answer. */
+function readLegacyWallpaper(b: Win32Bindings): LegacyWallpaper {
+  const buffer = Buffer.alloc(DESK_WALLPAPER_CHARS * 2)
+  const path = b.SystemParametersInfoW(SPI_GETDESKWALLPAPER, DESK_WALLPAPER_CHARS, buffer, 0)
+    ? buffer.toString('utf16le').replace(/\0[\s\S]*$/, '')
+    : null
+  const desktop = (value: string): string | null =>
+    readRegistryString(b, HKEY_CURRENT_USER, 'Control Panel\\Desktop', value)
+  return { path, style: desktop('WallpaperStyle'), tile: desktop('TileWallpaper') }
+}
+
+/** IDesktopWallpaper per monitor (COM, created on first use), falling back to the legacy read. */
+function wallpaperReader(
+  koffi: Koffi,
+  b: Win32Bindings,
+  log: Win32Log
+): (rectPx: PixelRect) => ReturnType<Win32Api['getWallpaperForMonitor']> {
+  return createMonitorWallpaperReader({
+    reader: () =>
+      createDesktopWallpaperReader(
+        createComRuntime(koffi, loadOle32(koffi)),
+        desktopWallpaperProtos(koffi)
+      ),
+    legacy: () => readLegacyWallpaper(b),
+    log
+  })
 }

@@ -12,7 +12,9 @@ import type {
   StorageStatus,
   StoreFiles,
   StoreName,
-  StoreSnapshot
+  StoreSnapshot,
+  ThemeInfo,
+  WallpaperInfo
 } from '@shared/ipc'
 
 /** Surface the sandboxed preload exposes to the renderer as `window.taskyard`. */
@@ -64,6 +66,16 @@ export interface TaskyardApi {
     undoMove(token: string): Promise<UndoMoveResult>
     /** Scans again; the full list arrives as desktop:changed. */
     rescan(): Promise<void>
+  }
+
+  theme: {
+    /** The Windows app theme and transparency setting; then follow `theme:changed`. */
+    get(): Promise<ThemeInfo>
+  }
+
+  wallpaper: {
+    /** What this display's wallpaper layer paints; refetch on `wallpaper:changed`. */
+    get(displayId: number): Promise<WallpaperInfo | null>
   }
 
   /** Subscribes to a main → renderer event; returns the unsubscribe. */

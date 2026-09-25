@@ -56,6 +56,8 @@ describe('createTaskyardApi', () => {
     await api.desktop.moveToDesktop(['D:\\a.txt'])
     await api.desktop.undoMove('token-1')
     await api.desktop.rescan()
+    await api.theme.get()
+    await api.wallpaper.get(2528732444)
 
     expect(ipc.invoke.mock.calls).toEqual([
       ['storage:load', 'layout'],
@@ -72,7 +74,9 @@ describe('createTaskyardApi', () => {
       ['desktop:trash', '1:2'],
       ['desktop:moveToDesktop', ['D:\\a.txt']],
       ['desktop:undoMove', 'token-1'],
-      ['desktop:rescan']
+      ['desktop:rescan'],
+      ['theme:get'],
+      ['wallpaper:get', 2528732444]
     ])
   })
 

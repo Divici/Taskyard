@@ -23,7 +23,9 @@ describe('IPC channel names', () => {
         moveToDesktop: 'desktop:moveToDesktop',
         undoMove: 'desktop:undoMove',
         rescan: 'desktop:rescan'
-      }
+      },
+      theme: { get: 'theme:get' },
+      wallpaper: { get: 'wallpaper:get' }
     })
   })
 

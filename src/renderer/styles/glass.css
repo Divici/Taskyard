@@ -1,0 +1,80 @@
+/* ============================================================================
+   .glass — the one glass surface (groups, the tools widget, the inspector, menus).
+
+   Real glass without OS acrylic (Decision 3): every desktop window paints its own copy of the
+   wallpaper (WallpaperLayer), so `backdrop-filter` here blurs exactly what Windows would show
+   behind the pane. `contain: paint` keeps each pane's blur to its own box.
+
+   Switches (set on <html> or an ancestor):
+   - [data-theme='dark' | 'light']      tokens.css picks the tint, border and text colours.
+   - [data-reduced-transparency]        Windows "Transparency effects" off: opaque, no blur.
+   - [data-dragging]                    a drag is in progress: no blur (60 fps while moving);
+                                        on an ancestor, or on the moving .glass itself.
+   The layer lives in `components`, so Tailwind utilities on the same element still win.
+   ========================================================================= */
+
+@layer components {
+  .glass {
+    position: relative;
+    isolation: isolate;
+    contain: paint;
+    color: var(--text-primary);
+    /* Fallback: the design token at the default opacity. */
+    background-color: var(--glass-bg);
+    background-color: rgb(var(--glass-tint) / var(--glass-alpha));
+    -webkit-backdrop-filter: blur(var(--blur)) saturate(1.2);
+    backdrop-filter: blur(var(--blur)) saturate(1.2);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-2);
+    /* Inner top highlight (light catching the pane's edge) over the theme glow. */
+    box-shadow:
+      inset 0 1px 0 var(--glass-highlight),
+      var(--glow);
+    transition:
+      background-color var(--transition),
+      border-color var(--transition),
+      box-shadow var(--transition);
+  }
+
+  /* Grain, like Windows acrylic's noise layer: under the content, over the tint. */
+  .glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background-image: var(--glass-noise);
+    opacity: var(--glass-noise-opacity);
+    mix-blend-mode: overlay;
+    pointer-events: none;
+  }
+
+  /* Windows "Transparency effects" off, via the OS media query or main's nativeTheme flag. */
+  @media (prefers-reduced-transparency: reduce) {
+    .glass {
+      background-color: rgb(var(--glass-tint) / 0.92);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+    .glass::before {
+      display: none;
+    }
+  }
+
+  [data-reduced-transparency] .glass {
+    background-color: rgb(var(--glass-tint) / 0.92);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  [data-reduced-transparency] .glass::before {
+    display: none;
+  }
+
+  /* While dragging, the moving pane (and everything under a dragging root) skips the blur. */
+  [data-dragging] .glass,
+  .glass[data-dragging] {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}

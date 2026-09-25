@@ -50,6 +50,14 @@ export function createTaskyardApi(
       rescan: () => invoke(IPC.desktop.rescan)
     },
 
+    theme: {
+      get: () => invoke(IPC.theme.get)
+    },
+
+    wallpaper: {
+      get: (displayId) => invoke(IPC.wallpaper.get, displayId)
+    },
+
     on<E extends IpcEventName>(event: E, listener: (payload: IpcEvents[E]) => void): () => void {
       if (!isEventChannel(event)) throw new Error(`taskyard.on: unknown event "${String(event)}"`)
       if (typeof listener !== 'function')

@@ -1,3 +1,5 @@
+import type { WallpaperPosition } from '@shared/wallpaper-geometry'
+
 /**
  * The Win32 surface Taskyard needs, behind one interface so every unit test runs headless:
  * `koffi-api.ts` implements it with real DLL calls, `fake-api.ts` with an in-memory model.
@@ -22,8 +24,8 @@ export interface PixelRect {
   height: number
 }
 
-/** IDesktopWallpaper's DESKTOP_WALLPAPER_POSITION, by name. */
-export type WallpaperPosition = 'center' | 'tile' | 'stretch' | 'fit' | 'fill' | 'span'
+/** IDesktopWallpaper's DESKTOP_WALLPAPER_POSITION, by name (shared with the renderer's geometry). */
+export type { WallpaperPosition }
 
 /** What Windows paints on one monitor (Phase 6 reads it through IDesktopWallpaper). */
 export interface MonitorWallpaper {
@@ -102,7 +104,11 @@ export interface Win32Api {
   setHidden(path: string, hidden: boolean): boolean
   /** A `REG_SZ`/`REG_EXPAND_SZ` (expanded) value, or null when the key or value is missing. */
   regGetString(hive: RegistryHive, key: string, value: string): string | null
-  /** The wallpaper Windows paints on the monitor at `rectPx`. Implemented in Phase 6. */
+  /**
+   * The wallpaper Windows paints on the monitor whose RECT matches `rectPx` (IDesktopWallpaper;
+   * falls back to `SPI_GETDESKWALLPAPER` + `WallpaperStyle`/`TileWallpaper` when COM fails or no
+   * monitor matches). Read only: Taskyard never changes the user's wallpaper.
+   */
   getWallpaperForMonitor(rectPx: PixelRect): MonitorWallpaper | null
   /** Icon `index` of `file` at `px`×`px`. Implemented in Phase 5. */
   extractIcon(file: string, index: number, px: number): IconBitmap | null

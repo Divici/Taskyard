@@ -179,6 +179,31 @@ describe('App', () => {
     expect(screen.getByRole('main')).toHaveAttribute('data-peeking', 'true')
   })
 
+  it("paints this display's wallpaper as its own layer, outside the content (quick-hide reveals it)", async () => {
+    const bridge = await renderApp()
+
+    const layer = await screen.findByTestId('wallpaper-layer')
+    await waitFor(() => expect(bridge.wallpaper.get).toHaveBeenCalledWith(1))
+    expect(screen.getByRole('main')).not.toContainElement(layer)
+    // Painted first, so everything else stacks above it.
+    expect(layer.compareDocumentPosition(screen.getByRole('main'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+  })
+
+  it('themes the page from the settings and the Windows theme', async () => {
+    const light = { ...defaultSettings(), theme: 'light' as const, glassBlur: 12 }
+    const bridge = installFakeBridge(createFakeBridge({ files: { settings: light } }))
+    await renderApp(bridge)
+
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('light'))
+    expect(document.documentElement.style.getPropertyValue('--blur')).toBe('12px')
+
+    act(() => useSettingsStore.getState().update({ theme: 'system' }))
+    // The fake bridge's Windows is in dark mode.
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'))
+  })
+
   it('unsubscribes from every event on unmount', async () => {
     const bridge = installFakeBridge()
     const { unmount } = render(<App />)

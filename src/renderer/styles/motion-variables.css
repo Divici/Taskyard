@@ -1,0 +1,70 @@
+/* ============================================================================
+   motion-variables.css — drop-in motion budget + reduced-motion kill switch.
+
+   Copy this into any project before writing animation code. Everything else
+   in the scroll-choreography library assumes these variables exist.
+
+   The idea: no rule anywhere needs to know the kill switch exists. Durations
+   and hidden-state opacity live in custom properties; the switch rewrites the
+   properties. One class on <html> collapses the entire page to static.
+   ========================================================================= */
+
+:root {
+  /* Tune these per project. Names must stay the same. */
+  --transition:      0.7s cubic-bezier(0.16, 0.84, 0.28, 1);
+  --card-transition: 1.4s;
+  --set-opacity:     0;    /* hidden state for JS-driven reveals */
+  --float-duration:  7s;
+}
+
+/* Applied by the motion toggle. */
+html.reduce-motion {
+  --transition:      0s !important;
+  --card-transition: 0s !important;
+  --set-opacity:     1 !important;
+  --float-duration:  0s !important;
+}
+
+/* Honour the OS setting on first paint, before any JS runs. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition:      0s;
+    --card-transition: 0s;
+    --set-opacity:     1;
+    --float-duration:  0s;
+  }
+}
+
+html.reduce-motion { scroll-behavior: auto; }
+
+/* Page lock while the load mask is up. */
+html.is-locked { overflow: hidden; }
+
+/* ---------------------------------------------------------------------------
+   css-reveal — the workhorse. JS only toggles `is-show`; CSS does the work.
+   Because the hidden state is var(--set-opacity), the kill switch reveals
+   everything with no JS running at all.
+   ------------------------------------------------------------------------ */
+.js-scroll {
+  opacity: var(--set-opacity);
+  transform: translate3d(0, 3%, 0);
+  transition: opacity var(--transition), transform var(--transition);
+  /* Stagger via an inline custom property: <div class="js-scroll" style="--i:2"> */
+  transition-delay: calc(var(--i, 0) * 90ms);
+}
+.js-scroll.is-show {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+/* ---------------------------------------------------------------------------
+   idle-float — animating the drop-shadow alongside the translate is what
+   makes it read as levitation rather than sliding.
+   ------------------------------------------------------------------------ */
+.float { animation: floating var(--float-duration) ease-in-out infinite; }
+.float--slow { animation-duration: calc(var(--float-duration) * 1.45); }
+
+@keyframes floating {
+  0%, 100% { transform: translate3d(0, 0, 0);     filter: drop-shadow(0 6px 14px rgb(0 0 0 / 0.25)); }
+  50%      { transform: translate3d(0, -3.5%, 0); filter: drop-shadow(0 30px 22px rgb(0 0 0 / 0.22)); }
+}

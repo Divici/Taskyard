@@ -78,6 +78,8 @@ export interface DesktopWindowManagerDeps {
   requestQuit: () => void
   /** F12 toggles DevTools on the desktop windows. Development builds only (`!app.isPackaged`). */
   devTools?: boolean
+  /** Any desktop window received WM_SETTINGCHANGE (wallpaper, theme; once per window). */
+  onSettingChange?: () => void
 }
 
 export interface DesktopWindowManager extends DisplaySource, IpcEventEmitter {
@@ -256,7 +258,8 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
       onClosed: onWindowClosed,
       onCloseRequest,
       onRendererLoaded: sendState,
-      devTools: deps.devTools
+      devTools: deps.devTools,
+      onSettingChange: deps.onSettingChange
     })
     byDisplay.set(display.id, desktop)
   }

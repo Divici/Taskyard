@@ -481,3 +481,21 @@ describe('file system calls', () => {
     expect(api.setHidden('C:\\d\\x', true)).toBe(false)
   })
 })
+
+describe('getWallpaperForMonitor (Phase 6)', () => {
+  it('asks the wallpaper reader for the monitor at that physical rect', () => {
+    const wallpaper = vi.fn(() => ({ path: null, position: 'fit' as const, monitorIndex: 1 }))
+    const api = createKoffiWin32Api(fk.koffi as unknown as Koffi, {
+      log,
+      bindings: fb.b as unknown as Win32Bindings,
+      wallpaper
+    })
+    const rect = { x: 2560, y: 0, width: 1920, height: 1080 }
+    expect(api.getWallpaperForMonitor(rect)).toEqual({
+      path: null,
+      position: 'fit',
+      monitorIndex: 1
+    })
+    expect(wallpaper).toHaveBeenCalledWith(rect)
+  })
+})

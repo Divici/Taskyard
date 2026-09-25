@@ -85,13 +85,35 @@ test.describe.serial('smoke', () => {
       })
       .toBe(true)
     const spots = windows
-      .map((window) => probe.uncoveredPoint(window.hwnd))
-      .filter((point) => point !== null)
+      .map((window) => ({ window, point: probe.uncoveredPoint(window.hwnd) }))
+      .filter((spot) => spot.point !== null)
     test.skip(spots.length === 0, 'other windows cover every Taskyard pixel on this desktop')
 
     // A window shown behind Chromium's back (raw ShowWindow) stays #000000, its backgroundColor.
-    const [spot] = spots
-    await expect.poll(() => probe.screenPixel(spot.x, spot.y)).not.toBe(0x000000)
+    // The wallpaper layer may itself be black at any given spot (letterbox bars, a dark picture),
+    // so the page paints a known colour there and the screen must show it.
+    const [{ window, point }] = spots
+    const target = app
+      .windows()
+      .find((p) => new URL(p.url()).searchParams.get('displayId') === String(window.displayId))!
+    const scale = window.screenBounds.width / window.bounds.width
+    await target.evaluate(
+      ({ x, y }) => {
+        const marker = document.createElement('div')
+        marker.id = 'paint-probe'
+        marker.style.cssText = `position:fixed;left:${x - 12}px;top:${y - 12}px;width:24px;height:24px;background:#ff00ff;z-index:2147483647`
+        document.body.append(marker)
+      },
+      {
+        x: (point!.x - window.screenBounds.x) / scale,
+        y: (point!.y - window.screenBounds.y) / scale
+      }
+    )
+    try {
+      await expect.poll(() => probe.screenPixel(point!.x, point!.y)).toBe(0xff00ff)
+    } finally {
+      await target.evaluate(() => document.getElementById('paint-probe')?.remove())
+    }
   })
 
   test('renders in an OS-sandboxed renderer without Node globals', async () => {

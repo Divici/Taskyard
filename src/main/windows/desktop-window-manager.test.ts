@@ -23,6 +23,7 @@ import {
 } from './desktop-window-manager'
 import { FakeIpcMain } from '../ipc/fake-ipc-main'
 import { registerDisplayIpc } from './display-ipc'
+import { WM_SETTINGCHANGE } from './desktop-window'
 
 const PRELOAD = 'C:\\app\\out\\preload\\index.js'
 const INDEX_HTML = 'C:\\app\\out\\renderer\\index.html'
@@ -1014,5 +1015,15 @@ describe('DevTools', () => {
     electron = createFakeElectron()
     start()
     for (const window of windows()) expect(window.webContents.pressKey({ key: 'F12' })).toBe(false)
+  })
+})
+
+describe('WM_SETTINGCHANGE', () => {
+  it("forwards every window's WM_SETTINGCHANGE to onSettingChange", () => {
+    const onSettingChange = vi.fn()
+    start({ onSettingChange })
+    expect(windows()).toHaveLength(2)
+    for (const window of windows()) window.sendWindowMessage(WM_SETTINGCHANGE)
+    expect(onSettingChange).toHaveBeenCalledTimes(2)
   })
 })

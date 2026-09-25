@@ -197,6 +197,22 @@ export class FakeBrowserWindow extends EventEmitter {
     this.emit('closed')
   }
 
+  private readonly messageHooks = new Map<number, (wParam: Buffer, lParam: Buffer) => void>()
+
+  /** Like BrowserWindow.hookWindowMessage (Windows only): one callback per message. */
+  hookWindowMessage(message: number, callback: (wParam: Buffer, lParam: Buffer) => void): void {
+    this.messageHooks.set(message, callback)
+  }
+
+  hookedMessages(): number[] {
+    return [...this.messageHooks.keys()]
+  }
+
+  /** Windows delivers `message` to this window; a hooked callback sees it. */
+  sendWindowMessage(message: number): void {
+    this.messageHooks.get(message)?.(Buffer.alloc(8), Buffer.alloc(8))
+  }
+
   /** Simulates the first paint: Electron's `ready-to-show`. */
   becomeReady(): void {
     this.emit('ready-to-show')

@@ -6,3 +6,4 @@ tsconfig.json
 tsconfig.*.json
 playwright-report
 test-results
+src/renderer/styles/motion-variables.css

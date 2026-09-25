@@ -11,6 +11,12 @@ import { secureWebPreferences } from './window-options'
  */
 export const DESKTOP_BOTTOM_INSET = 1
 
+/**
+ * Broadcast to every top-level window when a system setting changes: wallpaper
+ * (SPI_SETDESKWALLPAPER), colours, theme, transparency. Hooked for the wallpaper and theme.
+ */
+export const WM_SETTINGCHANGE = 0x001a
+
 /** If `ready-to-show` has not fired by then, the window is shown and seated anyway. */
 export const READY_TO_SHOW_TIMEOUT_MS = 10_000
 /** A crashed renderer is reloaded, but at most this many times per window … */
@@ -111,6 +117,8 @@ export interface DesktopBrowserWindow {
   ): unknown
   on(event: 'close', listener: (event: { preventDefault(): void }) => void): unknown
   once(event: 'ready-to-show', listener: () => void): unknown
+  /** Windows only: `callback` runs when the window receives `message` (after Chromium's own). */
+  hookWindowMessage(message: number, callback: (wParam: Buffer, lParam: Buffer) => void): void
 }
 
 export type DesktopBrowserWindowConstructor = new (
@@ -147,6 +155,8 @@ export interface DesktopWindowDeps {
   onRendererLoaded?: (window: DesktopWindow) => void
   /** F12 toggles (detached) DevTools. Development builds only: `!app.isPackaged`. */
   devTools?: boolean
+  /** The window received WM_SETTINGCHANGE (every desktop window does; the listener debounces). */
+  onSettingChange?: () => void
 }
 
 export interface DesktopWindow {
@@ -337,6 +347,18 @@ function setUpDesktopWindow(
     if (setup.abandoned) return
     deps.onClosed(desktop, { expected: closeAllowed || deps.canClose() })
   })
+
+  const { onSettingChange } = deps
+  if (onSettingChange) {
+    window.hookWindowMessage(WM_SETTINGCHANGE, () => {
+      // Runs inside the window's message loop: never let an exception escape into it.
+      try {
+        onSettingChange()
+      } catch (error) {
+        log.error(`desktop: WM_SETTINGCHANGE listener failed on display ${display.id}`, error)
+      }
+    })
+  }
 
   const { webContents } = window
   webContents.setWindowOpenHandler(() => ({ action: 'deny' }))

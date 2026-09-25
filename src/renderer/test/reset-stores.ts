@@ -4,6 +4,7 @@ import { useLayoutStore } from '../stores/layout'
 import { useSettingsStore } from '../stores/settings'
 import { useTasksStore } from '../stores/tasks'
 import { useUiStore } from '../stores/ui'
+import { useWallpaperStore } from '../stores/wallpaper'
 
 /** Puts every app-wide zustand store back to the state it was created with. */
 export function resetStores(): void {
@@ -15,4 +16,5 @@ export function resetStores(): void {
   useItemsStore.setState(useItemsStore.getInitialState(), true)
   useUiStore.setState(useUiStore.getInitialState(), true)
   useDisplayStore.setState(useDisplayStore.getInitialState(), true)
+  useWallpaperStore.setState(useWallpaperStore.getInitialState(), true)
 }
