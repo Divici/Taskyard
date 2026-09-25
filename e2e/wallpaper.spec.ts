@@ -1,7 +1,9 @@
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import type { WallpaperInfo } from '../src/shared/ipc'
 import type { TaskyardApi } from '../src/preload/api'
-import { createProfile, launchTaskyard } from './helpers/taskyard'
+import { createProfile, launchTaskyard, primaryWindow } from './helpers/taskyard'
 
 // Read only: the real wallpaper is served and painted; nothing changes the user's settings.
 
@@ -12,6 +14,8 @@ const displayIdOf = (page: Page): number =>
 
 test("each desktop window paints its own display's wallpaper over taskyard://, under glass", async () => {
   const profile = createProfile()
+  // One loose icon and no group: the primary display shows the glass hint card.
+  writeFileSync(join(profile.desktop, 'Notes.txt'), 'notes')
   let app: ElectronApplication | undefined
   try {
     const taskyard = await launchTaskyard(profile)
@@ -72,8 +76,9 @@ test("each desktop window paints its own display's wallpaper over taskyard://, u
     }
 
     // Theme and glass: the root carries the resolved theme and the settings' glass values, and
-    // the placeholder pane blurs the wallpaper behind it (unless transparency effects are off).
-    const page = pages[0]
+    // a glass pane (the empty-desktop hint card) blurs the wallpaper behind it (unless
+    // transparency effects are off).
+    const page = await primaryWindow(taskyard)
     const root = await page.evaluate(() => ({
       theme: document.documentElement.dataset.theme,
       reduced: document.documentElement.hasAttribute('data-reduced-transparency'),
@@ -81,10 +86,9 @@ test("each desktop window paints its own display's wallpaper over taskyard://, u
     }))
     expect(['dark', 'light']).toContain(root.theme)
     expect(root.blur).toBe('16px')
-    const glass = await page
-      .locator('.glass')
-      .first()
-      .evaluate((el) => getComputedStyle(el).backdropFilter)
+    const card = page.getByRole('region', { name: 'Tidy up your desktop' })
+    await expect(card).toContainClass('glass')
+    const glass = await card.evaluate((el) => getComputedStyle(el).backdropFilter)
     if (root.reduced) expect(glass).toBe('none')
     else expect(glass).toBe('blur(16px) saturate(1.2)')
 

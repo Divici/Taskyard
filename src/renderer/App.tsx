@@ -1,7 +1,8 @@
 import { APP_NAME } from '@shared/app-info'
 import type { Rect } from '@shared/schema'
+import { DesktopCanvas } from './components/canvas/DesktopCanvas'
 import { WallpaperLayer } from './components/canvas/WallpaperLayer'
-import { LooseItemsGrid } from './components/desktop/LooseItemsGrid'
+import { ConfirmHost } from './components/feedback/ConfirmDialog'
 import { ReadOnlyBanner } from './components/feedback/ReadOnlyBanner'
 import { Toaster } from './components/feedback/Toaster'
 import { useBridgeSync } from './lib/use-bridge-sync'
@@ -36,14 +37,14 @@ export default function App(): React.JSX.Element {
         data-desktop-items={itemCount}
         className="relative h-screen overflow-hidden select-none"
       >
-        {/* Phase 5 stand-in over the wallpaper: every item with its icon. Phase 7 replaces it
-            with the canvas. */}
-        <LooseItemsGrid />
-        {/* Phase 6's glass placeholder, shrunk to a label so the items stay visible. */}
-        <div className="glass pointer-events-none absolute right-4 bottom-3 px-4 py-2">
-          <h1 className="text-sm font-semibold tracking-tight">{APP_NAME}</h1>
-        </div>
+        <h1 className="sr-only">{APP_NAME}</h1>
+        {/* The desktop itself: loose icons, groups, marquee and menus, once main has said which
+            display this window covers. */}
+        {info !== null && info.id === displayId && (
+          <DesktopCanvas displayId={info.id} info={info} />
+        )}
       </main>
+      <ConfirmHost />
       <Toaster />
     </>
   )

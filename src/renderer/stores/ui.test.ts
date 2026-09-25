@@ -83,3 +83,111 @@ describe('ui store — read-only files', () => {
     ])
   })
 })
+
+describe('ui store — selection', () => {
+  it('replaces, toggles and clears the selection, keeping the anchor', () => {
+    const store = createUiStore()
+    const ui = (): ReturnType<typeof store.getState> => store.getState()
+
+    ui().select(['a'])
+    expect(ui().selection).toEqual(['a'])
+    expect(ui().selectionAnchor).toBe('a')
+
+    ui().toggleSelect('b')
+    expect(ui().selection).toEqual(['a', 'b'])
+    expect(ui().selectionAnchor).toBe('b')
+    ui().toggleSelect('a')
+    expect(ui().selection).toEqual(['b'])
+
+    ui().clearSelection()
+    expect(ui().selection).toEqual([])
+    expect(ui().selectionAnchor).toBeNull()
+  })
+
+  it('selects a range between the anchor and the clicked id, in display order', () => {
+    const store = createUiStore()
+    const order = ['a', 'b', 'c', 'd', 'e']
+
+    store.getState().select(['d'])
+    store.getState().selectRange(order, 'b')
+    expect(store.getState().selection).toEqual(['b', 'c', 'd'])
+    // The anchor stays, so another shift+click re-spans from it.
+    store.getState().selectRange(order, 'e')
+    expect(store.getState().selection).toEqual(['d', 'e'])
+  })
+
+  it('selects only the clicked id when there is no anchor in the list', () => {
+    const store = createUiStore()
+    store.getState().selectRange(['a', 'b'], 'b')
+    expect(store.getState().selection).toEqual(['b'])
+  })
+
+  it('does not notify subscribers when the selection is unchanged', () => {
+    const store = createUiStore()
+    store.getState().select(['a'])
+    const listener = vi.fn()
+    const unsubscribe = store.subscribe(listener)
+    store.getState().select(['a'])
+    store.getState().clearSelection()
+    store.getState().clearSelection()
+    unsubscribe()
+    expect(listener).toHaveBeenCalledOnce()
+  })
+})
+
+describe('ui store — canvas state', () => {
+  it('tracks the marquee, quick-hide, the inspector and inline rename', () => {
+    const store = createUiStore()
+    const ui = (): ReturnType<typeof store.getState> => store.getState()
+    expect(ui()).toMatchObject({
+      marquee: null,
+      quickHidden: false,
+      inspectorOpen: false,
+      renaming: null,
+      hintDismissed: false
+    })
+
+    ui().setMarquee({ x: 1, y: 2, width: 3, height: 4 })
+    ui().toggleQuickHidden()
+    ui().setInspectorOpen(true)
+    ui().startRename({ kind: 'group', id: 'g' })
+    ui().dismissHint()
+    expect(ui()).toMatchObject({
+      marquee: { x: 1, y: 2, width: 3, height: 4 },
+      quickHidden: true,
+      inspectorOpen: true,
+      renaming: { kind: 'group', id: 'g' },
+      hintDismissed: true
+    })
+
+    ui().stopRename()
+    ui().setQuickHidden(false)
+    expect(ui().renaming).toBeNull()
+    expect(ui().quickHidden).toBe(false)
+  })
+
+  it('confirm() resolves with the user’s answer and closes the request', async () => {
+    const store = createUiStore()
+
+    const answer = store.getState().confirm({ title: 'Delete group?', description: '3 items' })
+    expect(store.getState().confirmRequest).toMatchObject({
+      title: 'Delete group?',
+      description: '3 items',
+      confirmLabel: 'OK',
+      destructive: false
+    })
+    store.getState().resolveConfirm(true)
+
+    await expect(answer).resolves.toBe(true)
+    expect(store.getState().confirmRequest).toBeNull()
+  })
+
+  it('a second confirm() cancels the first one', async () => {
+    const store = createUiStore()
+    const first = store.getState().confirm({ title: 'one', description: '' })
+    const second = store.getState().confirm({ title: 'two', description: '' })
+    await expect(first).resolves.toBe(false)
+    store.getState().resolveConfirm(false)
+    await expect(second).resolves.toBe(false)
+  })
+})

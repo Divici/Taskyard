@@ -5,6 +5,7 @@ import { getBridge } from './bridge'
 import { subscribeBridgeEvents } from './bridge-events'
 import { connectDesktop } from './desktop-sync'
 import { connectDisplay } from './display-sync'
+import { connectReconcile } from './reconcile-sync'
 import { LOAD_FAILED_TOAST } from './storage-messages'
 import { connectTheme } from './theme'
 
@@ -12,7 +13,8 @@ import { connectTheme } from './theme'
  * Connects the app's stores to main for the lifetime of the component: subscribes to the events
  * first (so nothing sent during hydration is missed), then hydrates from disk, connects this
  * window to its display (which registers the display in the layout) and lists the desktop. The
- * theme follows the settings and the Windows theme from the start (lib/theme.ts).
+ * theme follows the settings and the Windows theme from the start (lib/theme.ts). The primary
+ * display's window reconciles the layout with the desktop (lib/reconcile-sync.ts).
  */
 export function useBridgeSync(): void {
   useEffect(() => {
@@ -26,10 +28,13 @@ export function useBridgeSync(): void {
     }
     const unsubscribe = subscribeBridgeEvents(api)
     const disconnectTheme = connectTheme(api)
+    // Before any data arrives, so the first reconcile (primary window only) sees it all.
+    const disconnectReconcile = connectReconcile()
     const disconnectDisplay = connectDisplay(api, window.location.search)
     const disconnectDesktop = connectDesktop(api)
     void hydrateStores(api)
     return () => {
+      disconnectReconcile()
       disconnectDesktop()
       disconnectDisplay()
       disconnectTheme()

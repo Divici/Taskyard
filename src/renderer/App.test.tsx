@@ -43,11 +43,28 @@ const item: DesktopItem = {
 }
 
 describe('App', () => {
-  it('renders the Taskyard placeholder inside a main landmark', async () => {
+  it('names the page with a Taskyard heading inside the main landmark', async () => {
     await renderApp()
 
     const main = screen.getByRole('main')
     expect(main).toContainElement(screen.getByRole('heading', { level: 1, name: 'Taskyard' }))
+  })
+
+  it('renders the desktop canvas for its display, with the loose icons reconcile placed', async () => {
+    const bridge = installFakeBridge(createFakeBridge({ items: [item] }))
+    await renderApp(bridge)
+
+    const icon = await screen.findByRole('option', { name: 'Budget' })
+    expect(screen.getByRole('listbox', { name: 'Desktop icons' })).toContainElement(icon)
+    expect(icon).toHaveStyle({ left: '0px', top: '0px' })
+    await waitFor(() =>
+      expect(bridge.storage.save).toHaveBeenCalledWith(
+        'layout',
+        expect.objectContaining({
+          data: expect.objectContaining({ paths: { '3:4': item.path } })
+        })
+      )
+    )
   })
 
   it('has no detectable accessibility violations', async () => {
@@ -131,7 +148,7 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByRole('main')).toHaveAttribute('data-desktop-items', '1'))
   })
 
-  it('shows every desktop item with the icon main sent (pulled, then streamed)', async () => {
+  it('places every desktop item on the primary display and shows it with the icon main sent (pulled, then streamed)', async () => {
     const folder: DesktopItem = { ...item, id: '3:5', name: 'Projects', ext: '', kind: 'folder' }
     const bridge = installFakeBridge(
       createFakeBridge({
@@ -141,7 +158,7 @@ describe('App', () => {
     )
     await renderApp(bridge)
 
-    const budget = await screen.findByRole('listitem', { name: 'Budget' })
+    const budget = await screen.findByRole('option', { name: 'Budget' })
     await waitFor(() =>
       expect(budget.querySelector('img')).toHaveAttribute('src', 'data:image/png;base64,SMALL')
     )
@@ -155,7 +172,7 @@ describe('App', () => {
     )
 
     expect(budget.querySelector('img')).toHaveAttribute('src', 'data:image/png;base64,BIG')
-    expect(screen.getByRole('listitem', { name: 'Projects' }).querySelector('img')).toHaveAttribute(
+    expect(screen.getByRole('option', { name: 'Projects' }).querySelector('img')).toHaveAttribute(
       'data-icon',
       'generic'
     )
@@ -182,8 +199,8 @@ describe('App', () => {
     const bridge = installFakeBridge(createFakeBridge({ items: [tool, link] }))
     await renderApp(bridge)
     const img = (name: string): HTMLElement | null =>
-      screen.getByRole('listitem', { name }).querySelector('img')
-    await screen.findByRole('listitem', { name: 'tool' })
+      screen.getByRole('option', { name }).querySelector('img')
+    await screen.findByRole('option', { name: 'tool' })
     act(() => {
       bridge.emit('desktop:icon', { id: '3:6', px: 96, dataUrl: 'data:exe', version: 'exe' })
       bridge.emit('desktop:icon', { id: '3:7', px: 96, dataUrl: 'data:app', version: 'lnk-1' })

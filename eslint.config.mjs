@@ -39,5 +39,14 @@ export default defineConfig(
       ...eslintPluginReactRefresh.configs.vite.rules
     }
   },
+  {
+    // shadcn/ui components are copied from the registry (`npx shadcn add`) and kept close to
+    // upstream so they can be re-synced; their wrappers return whatever the primitive renders.
+    files: ['src/renderer/components/ui/**/*.tsx'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      'react-refresh/only-export-components': 'off'
+    }
+  },
   eslintConfigPrettier
 )

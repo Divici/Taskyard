@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { emptyLayout, newDisplayLayout } from '@shared/defaults'
+import { renamePath } from '@shared/layout-mutations'
+import { PRUNE_AFTER_MS } from '@shared/placement'
 import type { Group, LayoutFile } from '@shared/schema'
 import { installFakeBridge } from '../test/fake-bridge'
 import { FakeMain, tick } from '@shared/test/fake-main'
-import { createLayoutStore } from './layout'
+import { clampGroupInto, createLayoutStore } from './layout'
 import { useUiStore } from './ui'
 
 const PRIMARY = { x: 0, y: 0, width: 2560, height: 1440 }
@@ -440,5 +442,191 @@ describe('layout store', () => {
     expect(bridge.storage.save).toHaveBeenCalledOnce()
     expect(useUiStore.getState().toasts).toEqual([])
     expect(store.getState().layout.displays[0].groups).toHaveLength(1)
+  })
+  describe('Phase 7 actions', () => {
+    const AREA = { x: 0, y: 0, width: 400, height: 300 }
+    const CELL = { width: 100, height: 100 }
+    const PLACE = { displayId: 1, area: AREA, cell: CELL }
+    const NOW = 1_760_000_000_000
+    const item = (id: string, name = id): { id: string; name: string; path: string } => ({
+      id,
+      name,
+      path: `C:\\D\\${name}`
+    })
+
+    function hydrated(data: LayoutFile = withDisplay()): {
+      bridge: ReturnType<typeof installFakeBridge>
+      store: ReturnType<typeof createLayoutStore>
+    } {
+      const bridge = installFakeBridge()
+      const store = createLayoutStore()
+      store.getState().receive({ revision: 1, data })
+      return { bridge, store }
+    }
+
+    function placed(ids: Record<string, { x: number; y: number }>): LayoutFile {
+      const layout = withDisplay()
+      layout.displays[0].loose = ids
+      layout.paths = Object.fromEntries(Object.keys(ids).map((id) => [id, `C:\\D\\${id}`]))
+      return layout
+    }
+
+    it('reconcile hides a missing id and stamps lastSeen (placement kept)', async () => {
+      const { bridge, store } = hydrated(placed({ '1:1': { x: 0, y: 0 } }))
+
+      store.getState().reconcile([], { now: NOW, place: PLACE })
+
+      const layout = store.getState().layout
+      expect(layout.lastSeen).toEqual({ '1:1': NOW })
+      expect(layout.displays[0].loose).toEqual({ '1:1': { x: 0, y: 0 } })
+      await vi.waitFor(() => expect(bridge.storage.save).toHaveBeenCalledOnce())
+    })
+
+    it('reconcile clears lastSeen when the id returns', () => {
+      const start = placed({ '1:1': { x: 0, y: 0 } })
+      start.lastSeen = { '1:1': NOW - 1000 }
+      const { store } = hydrated(start)
+
+      store.getState().reconcile([item('1:1')], { now: NOW, place: PLACE })
+
+      expect(store.getState().layout.lastSeen).toEqual({})
+    })
+
+    it('reconcile prunes an id missing for more than 30 days', () => {
+      const start = placed({ '1:1': { x: 0, y: 0 } })
+      start.lastSeen = { '1:1': NOW - PRUNE_AFTER_MS - 1 }
+      const { store } = hydrated(start)
+
+      store.getState().reconcile([], { now: NOW, place: PLACE })
+
+      const layout = store.getState().layout
+      expect(layout.displays[0].loose).toEqual({})
+      expect(layout.paths).toEqual({})
+      expect(layout.lastSeen).toEqual({})
+    })
+
+    it('reconcile places new ids on the primary display, column-first, and records their paths', () => {
+      const start = withDisplay()
+      start.displays.push(newDisplayLayout(2, SECONDARY))
+      const { store } = hydrated(start)
+
+      store.getState().reconcile([item('1:2', 'b'), item('1:1', 'a')], { now: NOW, place: PLACE })
+
+      const layout = store.getState().layout
+      expect(layout.displays[0].loose).toEqual({ '1:1': { x: 0, y: 0 }, '1:2': { x: 0, y: 100 } })
+      expect(layout.displays[1].loose).toEqual({})
+      expect(layout.paths).toEqual({ '1:1': 'C:\\D\\a', '1:2': 'C:\\D\\b' })
+    })
+
+    it('reconcile saves nothing when the layout already agrees', async () => {
+      const { bridge, store } = hydrated(placed({ '1:1': { x: 0, y: 0 } }))
+      store.getState().reconcile([item('1:1')], { now: NOW, place: PLACE })
+      await drain()
+      expect(bridge.storage.save).not.toHaveBeenCalled()
+    })
+
+    it('placeNewItems puts only unplaced ids in free cells', () => {
+      const { store } = hydrated(placed({ '1:1': { x: 0, y: 0 } }))
+      store.getState().placeNewItems([item('1:1'), item('1:9')], PLACE)
+      expect(store.getState().layout.displays[0].loose).toEqual({
+        '1:1': { x: 0, y: 0 },
+        '1:9': { x: 0, y: 100 }
+      })
+    })
+
+    it('onRenamed (main’s renamePath) updates one path entry and nothing else', () => {
+      const start = placed({ '1:1': { x: 0, y: 0 }, '1:2': { x: 0, y: 100 } })
+      const next = renamePath(start, '1:1', 'C:\\D\\renamed.txt')
+      expect(next.paths).toEqual({ '1:1': 'C:\\D\\renamed.txt', '1:2': 'C:\\D\\1:2' })
+      expect(next.displays).toBe(start.displays)
+    })
+
+    it('moveGroupToDisplay clamps the group into the target work area', () => {
+      const start = withDisplay()
+      start.displays[0].groups = [group('g', { x: 2300, y: 1300, w: 400, h: 300 })]
+      start.displays.push(newDisplayLayout(2, SECONDARY))
+      const { store } = hydrated(start)
+      const target = { x: 0, y: 0, width: 1920, height: 1032 }
+
+      store.getState().moveGroupToDisplay(1, 'g', 2, clampGroupInto(target))
+
+      const layout = store.getState().layout
+      expect(layout.displays[0].groups).toEqual([])
+      expect(layout.displays[1].groups[0]).toMatchObject({ x: 1520, y: 732, w: 400, h: 300 })
+    })
+
+    it('createGroup adds a group on top at the rect, captures the given items, in one save', async () => {
+      const start = placed({ '1:1': { x: 0, y: 0 }, '1:2': { x: 0, y: 100 } })
+      start.displays[0].groups = [group('old', { z: 4, items: [] })]
+      const { bridge, store } = hydrated(start)
+
+      const id = store.getState().createGroup(1, { x: 40, y: 48, width: 280, height: 200 }, ['1:2'])
+
+      const created = store.getState().layout.displays[0].groups.find((g) => g.id === id)
+      expect(created).toMatchObject({
+        title: 'New group',
+        x: 40,
+        y: 48,
+        w: 280,
+        h: 200,
+        z: 5,
+        items: ['1:2'],
+        rolledUp: false,
+        sort: 'manual'
+      })
+      expect(store.getState().layout.displays[0].loose).toEqual({ '1:1': { x: 0, y: 0 } })
+      await drain()
+      expect(bridge.storage.save).toHaveBeenCalledOnce()
+    })
+
+    it('createGroup returns null for a display without an entry', () => {
+      const { store } = hydrated()
+      expect(store.getState().createGroup(9, { x: 0, y: 0, width: 280, height: 200 })).toBeNull()
+    })
+
+    it('renames, moves, resizes and rolls a group up (own fields only)', () => {
+      const start = withDisplay()
+      start.displays[0].groups = [group('g')]
+      const { store } = hydrated(start)
+      const api = store.getState()
+
+      api.renameGroup(1, 'g', 'Work')
+      api.moveGroup(1, 'g', { x: 100, y: 120 })
+      api.resizeGroup(1, 'g', { x: 96, y: 120, width: 320, height: 240 })
+      api.toggleRollUp(1, 'g')
+      api.setGroupSort(1, 'g', 'name')
+      api.setExcludeFromQuickHide(1, 'g', true)
+
+      expect(store.getState().layout.displays[0].groups[0]).toMatchObject({
+        title: 'Work',
+        x: 96,
+        y: 120,
+        w: 320,
+        h: 240,
+        rolledUp: true,
+        sort: 'name',
+        excludeFromQuickHide: true,
+        items: ['1:2']
+      })
+      api.toggleRollUp(1, 'g')
+      expect(store.getState().layout.displays[0].groups[0].rolledUp).toBe(false)
+    })
+
+    it('applyAutoOrganize adds the groups and moves the loose items into them', () => {
+      const { store } = hydrated(placed({ '1:1': { x: 0, y: 0 } }))
+      store.getState().applyAutoOrganize(1, [group('apps', { items: ['1:1'] })])
+      const display = store.getState().layout.displays[0]
+      expect(display.loose).toEqual({})
+      expect(display.groups.map((g) => [g.id, g.items])).toEqual([['apps', ['1:1']]])
+    })
+
+    it('arrangeLoose lays the loose icons out again in the given order', () => {
+      const { store } = hydrated(placed({ a: { x: 300, y: 200 }, b: { x: 5, y: 5 } }))
+      store.getState().arrangeLoose(1, ['a', 'b'], AREA, CELL)
+      expect(store.getState().layout.displays[0].loose).toEqual({
+        a: { x: 0, y: 0 },
+        b: { x: 0, y: 100 }
+      })
+    })
   })
 })

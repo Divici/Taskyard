@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 import type { TaskyardApi } from '../src/preload/api'
 import { writeLnk } from '../src/main/desktop/test/lnk-writer'
-import { createProfile, launchTaskyard, type Profile } from './helpers/taskyard'
+import { createProfile, launchTaskyard, primaryWindow, type Profile } from './helpers/taskyard'
 
 const SYSTEM32 = join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32')
 
@@ -15,7 +15,7 @@ function pngSize(dataUrl: string): { width: number; height: number } {
 }
 
 const tileIcon = (page: Page, name: string): Locator =>
-  page.getByRole('listitem', { name, exact: true }).locator('img')
+  page.getByRole('option', { name, exact: true }).locator('img')
 
 /** `ceil(64 × the largest scale factor over all displays)`, as main computes it. */
 async function expectedPx(app: ElectronApplication): Promise<number> {
@@ -49,8 +49,8 @@ test('every item gets its icon: shortcut → target at the display size, folder 
 
   let app = await launchTaskyard(profile)
   try {
-    const page = await app.firstWindow()
-    await page.waitForLoadState('domcontentloaded')
+    // New items are placed as loose icons on the primary display.
+    const page = await primaryWindow(app)
     await expect(page.locator('main')).toHaveAttribute('data-desktop-items', '4')
     const px = await expectedPx(app)
 
@@ -92,8 +92,7 @@ test('every item gets its icon: shortcut → target at the display size, folder 
   // Second launch: every icon comes from the disk cache; nothing is fetched or extracted.
   app = await launchTaskyard(profile)
   try {
-    const page = await app.firstWindow()
-    await page.waitForLoadState('domcontentloaded')
+    const page = await primaryWindow(app)
     const px = await expectedPx(app)
     await expect(tileIcon(page, 'Notepad')).toHaveAttribute('data-icon', String(px))
     await expect(tileIcon(page, 'Notes')).toHaveAttribute('data-icon', '32')

@@ -2,7 +2,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { _electron as electron, type ElectronApplication } from '@playwright/test'
+import {
+  _electron as electron,
+  expect,
+  type ElectronApplication,
+  type Page
+} from '@playwright/test'
 import { ENV } from '../../src/main/app/env'
 import { LOG_FILE_NAME } from '../../src/main/app/logger'
 
@@ -55,4 +60,28 @@ export function taskyardEnv(profile: Profile): Record<string, string> {
 
 export function launchTaskyard(profile: Profile): Promise<ElectronApplication> {
   return electron.launch({ args: [MAIN_ENTRY], env: taskyardEnv(profile) })
+}
+
+/**
+ * The desktop window of the primary display: the one that places new desktop items (the
+ * single reconcile writer), so loose icons appear there.
+ */
+export async function primaryWindow(app: ElectronApplication): Promise<Page> {
+  const primaryId = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().id)
+  const displayCount = await app.evaluate(({ screen }) => screen.getAllDisplays().length)
+  let found: Page | undefined
+  await expect
+    .poll(
+      () => {
+        const windows = app.windows()
+        found = windows.find(
+          (page) => new URL(page.url()).searchParams.get('displayId') === String(primaryId)
+        )
+        return windows.length >= displayCount && found !== undefined
+      },
+      { timeout: 15_000 }
+    )
+    .toBe(true)
+  await found!.waitForLoadState('domcontentloaded')
+  return found!
 }

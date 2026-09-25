@@ -1,7 +1,9 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import { emptyLayout } from '@shared/defaults'
+import { clampRect, type Size } from '@shared/geometry'
 import type { StoreSnapshot } from '@shared/ipc'
 import {
+  applyAutoOrganize,
   bringGroupToFront,
   deleteGroup,
   ensureDisplay,
@@ -17,7 +19,23 @@ import {
   type LooseSlots,
   type MoveTarget
 } from '@shared/layout-mutations'
-import type { DisplayLayout, Group, LayoutFile, Point, Rect, ToolsState } from '@shared/schema'
+import {
+  arrangeLoose,
+  placeNewItems,
+  reconcileLayout,
+  type PlaceTarget,
+  type PresentItem,
+  type ReconcileOptions
+} from '@shared/placement'
+import type {
+  DisplayLayout,
+  Group,
+  GroupSort,
+  LayoutFile,
+  Point,
+  Rect,
+  ToolsState
+} from '@shared/schema'
 import { createStoreDoc, type StoreSyncOptions } from './persist'
 
 /**
@@ -85,9 +103,64 @@ export interface LayoutState {
   setLoosePosition(displayId: number, fileId: string, point: Point | null): void
   /** Field-level edit of the display's tools widget (move, resize, roll-up, active tool). */
   updateTools(displayId: number, update: (tools: ToolsState) => ToolsState): void
+
+  // ---- Phase 7: groups, placement, reconcile -------------------------------------------------
+
+  /**
+   * Creates a group at `rect` on top of the display, titled `title` ("New group"), and moves
+   * `ids` into it (out of wherever they are) — one save. Returns the new id, or null when the
+   * display has no entry.
+   */
+  createGroup(displayId: number, rect: Rect, ids?: string[], title?: string): string | null
+  renameGroup(displayId: number, groupId: string, title: string): void
+  moveGroup(displayId: number, groupId: string, to: Point): void
+  resizeGroup(displayId: number, groupId: string, rect: Rect): void
+  /** Rolls the group up to its title bar, or back down (width and height are kept). */
+  toggleRollUp(displayId: number, groupId: string): void
+  setGroupSort(displayId: number, groupId: string, sort: GroupSort): void
+  setExcludeFromQuickHide(displayId: number, groupId: string, exclude: boolean): void
+  /**
+   * Brings the layout in line with the items on disk (src/shared/placement.ts `reconcileLayout`):
+   * stamps/clears `lastSeen`, prunes ids missing > 30 days, follows paths and places unplaced
+   * present ids on `options.place`. Only the primary display's window calls it (single writer;
+   * lib/reconcile-sync.ts). Saves nothing when the layout already agrees.
+   */
+  reconcile(present: PresentItem[], options: ReconcileOptions): void
+  /** Places items no display places yet as loose icons in the first free cells of `place`. */
+  placeNewItems(items: PresentItem[], place: PlaceTarget): void
+  /** Adds auto-organized groups (src/shared/auto-organize.ts), taking only still-loose items. */
+  applyAutoOrganize(displayId: number, groups: Group[]): void
+  /** Lays the display's loose icons out again, column-first around the groups, in `order`. */
+  arrangeLoose(displayId: number, order: string[], area: Rect, cell: Size): void
+
   /** Forgets main's data, the revision and unsaved changes; back to unhydrated (tests). */
   reset(): void
 }
+
+/** A `moveGroupToDisplay` clamp that keeps the group inside `area` (the target's work area). */
+export function clampGroupInto(area: Rect): (rect: GroupRect) => GroupRect {
+  return (rect) => {
+    const clamped = clampRect({ x: rect.x, y: rect.y, width: rect.w, height: rect.h }, area)
+    return { x: clamped.x, y: clamped.y, w: clamped.width, h: clamped.height }
+  }
+}
+
+/** A field-level group edit that returns the same group when nothing changes. */
+function patchGroup(patch: Partial<Group>): (group: Group) => Group {
+  return (group) =>
+    (Object.keys(patch) as Array<keyof Group>).every((key) => group[key] === patch[key])
+      ? group
+      : { ...group, ...patch }
+}
+
+const copyPresent = (items: PresentItem[]): PresentItem[] =>
+  items.map(({ id, path, name }) => ({ id, path, name }))
+
+const copyPlace = (place: PlaceTarget): PlaceTarget => ({
+  displayId: place.displayId,
+  area: { ...place.area },
+  cell: { ...place.cell }
+})
 
 function copyTarget(target: MoveTarget): MoveTarget {
   return 'loose' in target
@@ -159,6 +232,83 @@ export function createLayoutStore(
 
       updateTools(displayId, update) {
         doc.current.mutate((layout) => updateTools(layout, displayId, update))
+      },
+
+      createGroup(displayId, rect, ids = [], title = 'New group') {
+        const group: Group = {
+          id: crypto.randomUUID(),
+          title,
+          x: rect.x,
+          y: rect.y,
+          w: rect.width,
+          h: rect.height,
+          // Raised to the top when applied (bringGroupToFront computes z from the data then).
+          z: 0,
+          rolledUp: false,
+          items: [],
+          sort: 'manual',
+          excludeFromQuickHide: false,
+          createdAt: Date.now()
+        }
+        if (!get().addGroup(displayId, group)) return null
+        get().bringGroupToFront(displayId, group.id)
+        if (ids.length > 0) get().moveItems(displayId, ids, { groupId: group.id })
+        return group.id
+      },
+
+      renameGroup(displayId, groupId, title) {
+        get().updateGroup(displayId, groupId, patchGroup({ title }))
+      },
+
+      moveGroup(displayId, groupId, to) {
+        get().updateGroup(displayId, groupId, patchGroup({ x: to.x, y: to.y }))
+      },
+
+      resizeGroup(displayId, groupId, rect) {
+        get().updateGroup(
+          displayId,
+          groupId,
+          patchGroup({ x: rect.x, y: rect.y, w: rect.width, h: rect.height })
+        )
+      },
+
+      toggleRollUp(displayId, groupId) {
+        get().updateGroup(displayId, groupId, (group) => ({ ...group, rolledUp: !group.rolledUp }))
+      },
+
+      setGroupSort(displayId, groupId, sort) {
+        get().updateGroup(displayId, groupId, patchGroup({ sort }))
+      },
+
+      setExcludeFromQuickHide(displayId, groupId, exclude) {
+        get().updateGroup(displayId, groupId, patchGroup({ excludeFromQuickHide: exclude }))
+      },
+
+      reconcile(present, options) {
+        const items = copyPresent(present)
+        const opts: ReconcileOptions = {
+          now: options.now,
+          place: options.place ? copyPlace(options.place) : null
+        }
+        doc.current.mutate((layout) => reconcileLayout(layout, items, opts))
+      },
+
+      placeNewItems(items, place) {
+        const fresh = copyPresent(items)
+        const target = copyPlace(place)
+        doc.current.mutate((layout) => placeNewItems(layout, fresh, target))
+      },
+
+      applyAutoOrganize(displayId, groups) {
+        const created = structuredClone(groups)
+        doc.current.mutate((layout) => applyAutoOrganize(layout, displayId, created))
+      },
+
+      arrangeLoose(displayId, order, area, cell) {
+        const ids = [...order]
+        const within = { ...area }
+        const size = { ...cell }
+        doc.current.mutate((layout) => arrangeLoose(layout, displayId, ids, within, size))
       },
 
       reset() {

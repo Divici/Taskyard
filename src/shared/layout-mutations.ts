@@ -357,3 +357,31 @@ export function renamePath(layout: LayoutFile, id: string, path: string): Layout
   if (layout.paths[id] === path || !knowsItem(layout, id)) return layout
   return { ...layout, paths: { ...layout.paths, [id]: path } }
 }
+
+/**
+ * Auto-organize: adds each group (unless its id exists) on top of the display, holding only
+ * those of its items that are still loose on the display *when this is applied* — an item
+ * another window has put in a group meanwhile stays there — and removes them from the loose
+ * layer. A group left with no items is skipped. One change; same object when nothing changes.
+ */
+export function applyAutoOrganize(
+  layout: LayoutFile,
+  displayId: number,
+  groups: readonly Group[]
+): LayoutFile {
+  return updateDisplay(layout, displayId, (display) => {
+    let top = display.groups.reduce((max, group) => Math.max(max, group.z), 0)
+    const loose = { ...display.loose }
+    const added: Group[] = []
+    for (const group of groups) {
+      if (display.groups.some((existing) => existing.id === group.id)) continue
+      const items = group.items.filter((id) => loose[id] !== undefined)
+      if (items.length === 0) continue
+      for (const id of items) delete loose[id]
+      top += 1
+      added.push({ ...group, items, z: top })
+    }
+    if (added.length === 0) return display
+    return { ...display, groups: [...display.groups, ...added], loose }
+  })
+}

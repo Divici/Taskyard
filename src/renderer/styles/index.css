@@ -136,3 +136,9 @@
     -webkit-font-smoothing: antialiased;
   }
 }
+
+/* Thin, quiet scrollbars for group bodies (Chromium honours the standard properties). */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.25) transparent;
+}
