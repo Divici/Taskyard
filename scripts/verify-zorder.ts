@@ -16,13 +16,21 @@
  *      foreground, the taskbar stays topmost above Taskyard and slides up when the cursor
  *      reaches the bottom edge. Runs right after check 2: after a synthesized Win+D undo,
  *      Explorer keeps an auto-hide taskbar up even with no Taskyard running (measured), and a
- *      freshly restarted taskbar holds focus and never auto-hides.
+ *      freshly restarted taskbar holds focus and never auto-hides. The cursor is parked off the
+ *      taskbar before auto-hide goes on: switched on under the pointer, the taskbar stays up for
+ *      good even after the pointer leaves (measured with Notepad foreground and no Taskyard
+ *      running: an Explorer behavior, not Taskyard's).
  *
  * Side effects, all undone in `finally` and on Ctrl+C: explorer.exe is restarted (always brought
  * back, with the user's own environment), Win+D is pressed twice, taskbar auto-hide is switched
- * on briefly (the original setting is journaled to a temp file first and restored; a run that
- * was killed is healed at the start of the next one), the cursor moves (restored), and one
- * Notepad or stand-in window is opened and closed. Pass --no-build to skip `npm run build`.
+ * on briefly, the cursor moves (restored), and one Notepad or stand-in window is opened and
+ * closed. Pass --no-build to skip `npm run build`.
+ *
+ * Auto-hide: the original setting is journaled to a temp file first. Explorer may save auto-hide
+ * ON to StuckRects3 while it is on and never saves the switch back off, and check 5's Explorer
+ * restart reloads StuckRects3; so the restore sets both the live state and the persisted bit, and
+ * the run ends by re-checking both against the journal (retrying until they hold) before the
+ * journal is cleared. A run that was killed is healed the same way at the start of the next one.
  *
  * Target (Phase 12): the dev build by default; `--packaged` runs dist/win-unpacked/Taskyard.exe
  * from `npm run dist`; `--exe <path>` runs any Taskyard.exe (e.g. the installed copy). The temp
@@ -47,6 +55,8 @@ import { explorerControl } from './lib/explorer'
 import { sleepSync } from './lib/sleep-sync'
 import { pollUntil } from './lib/koffi-log'
 import { ABS_AUTOHIDE, isTaskbarRevealed, withAutoHide } from './lib/taskbar-state'
+import { restoreTaskbarState, type RestoreResult, type TaskbarStateIo } from './lib/taskbar-restore'
+import { stuckRectsRegistry } from './lib/stuck-rects'
 import { launchStandInApp, STAND_IN_TITLE } from './lib/stand-in-app'
 import { loadScriptWin32 } from './lib/win32-script'
 import { formatCheck, formatSummary, notRun, type CheckResult } from './lib/zorder-report'
@@ -67,6 +77,7 @@ const WIN_D_BURST = 6
 const WIN_D_BURST_GAP_MS = 400
 const EXPLORER_RESEAT_LIMIT_MS = 2_000
 const TASKBAR_SLIDE_MS = 1_500
+const CURSOR_SETTLE_MS = 300
 const FOREGROUND_ATTEMPTS = 4
 
 const log = (message: string): void => console.log(`verify:zorder: ${message}`)
@@ -82,6 +93,15 @@ const win32 = loadScriptWin32(koffi)
 const api = createKoffiWin32Api(koffi, { log: console })
 const explorer = explorerControl(win32, { info: log, warn: log })
 const journal = appbarJournal()
+const stuckRects = stuckRectsRegistry()
+const taskbarIo: TaskbarStateIo = {
+  live: () => (win32.findWindows('Shell_TrayWnd').length > 0 ? win32.appbarState() : null),
+  setLive: (state) => win32.setAppbarState(state),
+  persistedAutoHide: () => stuckRects.autoHide(),
+  setPersistedAutoHide: (on) => stuckRects.setAutoHide(on),
+  sleep: sleepSync
+}
+const onOff = (state: number): string => (state & ABS_AUTOHIDE ? 'on' : 'off')
 const target = zorderTarget(process.argv.slice(2), resolve(__dirname, '..'), {
   electron: ELECTRON_BINARY,
   main: MAIN_ENTRY
@@ -115,7 +135,37 @@ function runCleanups(): void {
 function onSignal(signal: NodeJS.Signals): void {
   log(`${signal} received, undoing side effects`)
   runCleanups()
+  finalizeTaskbar()
   process.exit(130)
+}
+
+/** Restores the journaled auto-hide (live and persisted) and verifies that it holds. */
+function restoreTaskbar(original: number): RestoreResult {
+  return restoreTaskbarState(taskbarIo, original)
+}
+
+/**
+ * The run's last word on the taskbar: the live state and StuckRects3 match the journaled
+ * original (retried until they hold), and only then is the journal cleared. False when not.
+ */
+function finalizeTaskbar(): boolean {
+  const original = journal.pending()
+  if (original === null) return true
+  const result = restoreTaskbar(original)
+  const persisted =
+    result.persistedAutoHide === null ? 'unreadable' : result.persistedAutoHide ? 'on' : 'off'
+  const seen = `ABM_GETSTATE ${result.live ?? 'no taskbar'}, StuckRects3 auto-hide ${persisted}`
+  if (result.ok) {
+    journal.clear()
+    const retries = result.attempts > 1 ? `, after ${result.attempts} attempts` : ''
+    log(`taskbar auto-hide ${onOff(original)} as before the run (verified: ${seen}${retries})`)
+  } else {
+    log(
+      `WARNING: taskbar auto-hide not restored to ${onOff(original)} (${seen}); the journal is ` +
+        'kept and the next run retries'
+    )
+  }
+  return result.ok
 }
 
 function build(): void {
@@ -230,20 +280,29 @@ async function checkAutoHideTaskbar(taskyard: Hwnd[]): Promise<CheckResult> {
     return cx >= r.left && cx < r.right && cy >= r.top && cy < r.bottom
   })
   if (primary.length === 0) return notRun(title, 'no Taskyard window on the primary monitor')
-  const original = win32.appbarState()
+  // A journal the start-up heal could not clear still holds the user's real setting.
+  const original = journal.pending() ?? win32.appbarState()
   const cursor = win32.cursor()
+  // Verified (live and StuckRects3) before check 5 restarts Explorer, which reloads StuckRects3.
+  // The journal stays until finalizeTaskbar re-checks at the very end of the run.
   const restore = (): void => {
-    win32.setAppbarState(original)
+    const result = restoreTaskbar(original)
     win32.moveCursor(cursor.x, cursor.y)
-    if (win32.appbarState() === original) journal.clear()
+    if (!result.ok) log(`taskbar auto-hide did not go back to ${onOff(original)} yet`)
   }
   // On disk before the taskbar is touched: a killed run is healed by the next one.
   journal.save(original)
   const dropRestore = addCleanup('restore taskbar auto-hide and cursor', restore)
   try {
+    // Off the taskbar first (see the header): auto-hide switched on under the pointer sticks.
+    win32.moveCursor(cx, cy)
+    await sleep(CURSOR_SETTLE_MS)
     win32.setAppbarState(withAutoHide(original))
     const foreground = await makeForeground(primary)
     const revealedNow = (): boolean => isTaskbarRevealed(win32.rectOf(tray), screen.height)
+    const hideWaitStarted = Date.now()
+    const hidFirst = await waitFor(() => (revealedNow() ? undefined : true), TASKBAR_SLIDE_MS * 2)
+    const hideWaitMs = Date.now() - hideWaitStarted
     // Explorer re-evaluates auto-hide when the cursor leaves the taskbar (tool windows such as
     // Taskyard do not count as activations), so run a full edge -> away -> edge cycle.
     win32.moveCursor(cx, screen.height - 1)
@@ -273,7 +332,8 @@ async function checkAutoHideTaskbar(taskyard: Hwnd[]): Promise<CheckResult> {
       title,
       pass: stillForeground && slidAway === true && slidUp === true && onTop,
       detail:
-        `auto-hide was ${original & ABS_AUTOHIDE ? 'on' : 'off'} (restored after); Taskyard ${how}; ` +
+        `auto-hide was ${onOff(original)} before the run; cursor parked at ${cx},${cy}; ` +
+        `Taskyard ${how}; hidden ${hidFirst ? `${hideWaitMs} ms after that` : 'NOT'}; ` +
         `shown at the edge: ${firstShow === true}; ` +
         `slid away ${slidAway ? `${hideMs} ms` : 'NOT'} after the cursor left; ` +
         `slid up ${slidUp ? `${showMs} ms` : 'NOT'} after it came back (y=${rect.top}..${rect.bottom}); ` +
@@ -514,12 +574,17 @@ async function main(): Promise<number> {
   }
   win32.makeDpiAware()
   // Undo whatever a killed earlier run left behind before touching anything.
-  const healed = healInterruptedRun(journal, (state) => win32.setAppbarState(state))
-  if (healed !== null) log(`restored taskbar appbar state ${healed} left by an interrupted run`)
   if (!explorer.isShellUp()) {
     log('explorer.exe is not running (an interrupted run?); starting it')
     if (!explorer.ensureRunning()) throw new Error('explorer.exe could not be started')
   }
+  // After Explorer is up: the restore needs a taskbar to read back.
+  const healed = healInterruptedRun(journal, (state) => restoreTaskbar(state).ok)
+  if (healed !== null && journal.pending() !== null) {
+    log(`taskbar auto-hide left by an interrupted run could not be restored to ${onOff(healed)}`)
+    return 1
+  }
+  if (healed !== null) log(`restored taskbar auto-hide ${onOff(healed)} left by an interrupted run`)
   if (target.kind === 'packaged' && !existsSync(target.command)) {
     log(`${target.command} not found (run "npm run dist" first)`)
     return 1
@@ -528,6 +593,7 @@ async function main(): Promise<number> {
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.once(signal, onSignal)
 
   const partial: (CheckResult | undefined)[] = []
+  let taskbarRestored = true
   try {
     await run(partial)
   } catch (error) {
@@ -537,6 +603,8 @@ async function main(): Promise<number> {
     if (!explorer.ensureRunning()) {
       log('WARNING: explorer.exe is not running; start it from Task Manager')
     }
+    // Last, after check 5's Explorer restart has reloaded StuckRects3.
+    taskbarRestored = finalizeTaskbar()
   }
 
   const results = TITLES.map(
@@ -546,7 +614,7 @@ async function main(): Promise<number> {
   results.forEach((result, index) => console.log(formatCheck(index + 1, result)))
   const summary = formatSummary(results, TITLES.length)
   console.log(summary)
-  return summary.includes(': PASS') ? 0 : 1
+  return summary.includes(': PASS') && taskbarRestored ? 0 : 1
 }
 
 main().then(

@@ -67,18 +67,25 @@ describe('appbarJournal', () => {
 describe('healInterruptedRun', () => {
   it('restores the state an interrupted run left behind, then clears the journal', () => {
     appbarJournal(file).save(0)
-    const setState = vi.fn()
+    const restore = vi.fn(() => true)
 
-    expect(healInterruptedRun(appbarJournal(file), setState)).toBe(0)
-    expect(setState).toHaveBeenCalledExactlyOnceWith(0)
+    expect(healInterruptedRun(appbarJournal(file), restore)).toBe(0)
+    expect(restore).toHaveBeenCalledExactlyOnceWith(0)
     expect(existsSync(file)).toBe(false)
   })
 
-  it('does nothing after a clean run', () => {
-    const setState = vi.fn()
+  it('keeps the journal when the restore does not take, so the next run tries again', () => {
+    appbarJournal(file).save(0)
 
-    expect(healInterruptedRun(appbarJournal(file), setState)).toBeNull()
-    expect(setState).not.toHaveBeenCalled()
+    expect(healInterruptedRun(appbarJournal(file), () => false)).toBe(0)
+    expect(appbarJournal(file).pending()).toBe(0)
+  })
+
+  it('does nothing after a clean run', () => {
+    const restore = vi.fn(() => true)
+
+    expect(healInterruptedRun(appbarJournal(file), restore)).toBeNull()
+    expect(restore).not.toHaveBeenCalled()
   })
 
   it('keeps the journal when restoring fails, so the next run tries again', () => {

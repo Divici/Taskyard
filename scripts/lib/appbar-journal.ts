@@ -53,16 +53,16 @@ export function appbarJournal(file: string = APPBAR_JOURNAL_FILE): AppbarJournal
 }
 
 /**
- * Restores the taskbar state an interrupted run left behind. Returns the restored state, or
- * null when the last run finished cleanly. The journal is cleared only after a successful set.
+ * Restores the taskbar state an interrupted run left behind. Returns the journaled original, or
+ * null when the last run finished cleanly. The journal is cleared only once `restore` reports
+ * that the state took (verified), so a restore that did not take is retried by the next run.
  */
 export function healInterruptedRun(
   journal: AppbarJournal,
-  setState: (state: number) => void
+  restore: (state: number) => boolean
 ): number | null {
   const original = journal.pending()
   if (original === null) return null
-  setState(original)
-  journal.clear()
+  if (restore(original)) journal.clear()
   return original
 }
