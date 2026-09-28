@@ -51,7 +51,7 @@ test('tools: 3 tasks, one completed, reordered, a linked 2-minute timer → rest
     let widget = page.getByRole('region', { name: 'Tools' })
     await expect(widget).toBeVisible()
     await expect(widget.getByRole('heading', { name: 'Tasks' })).toBeVisible()
-    await expect(widget.getByText('Nothing to do. Add a task above.')).toBeVisible()
+    await expect(widget.getByText('Nothing to do.')).toBeVisible()
     const displayCount = await app.evaluate(({ screen }) => screen.getAllDisplays().length)
     await expect
       .poll(() => saved<LayoutFile>(profile, 'layout.json')?.displays.length ?? 0)

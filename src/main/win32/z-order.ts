@@ -43,14 +43,31 @@ export function seatSteps(target: InsertAfter): number[] {
   return [target]
 }
 
+/**
+ * Phase 12: where a Peek puts `self` — directly below the lowest taskbar (`Shell_TrayWnd` and
+ * each monitor's `Shell_SecondaryTrayWnd`), which is topmost, so `self` becomes topmost too and
+ * rises over every app while Start, the clock and the tray icon (Taskyard's own Peek toggle)
+ * stay usable on top. `HWND_TOPMOST` when there is no topmost taskbar to sit under.
+ */
+export function peekTarget(self: Hwnd, taskbars: readonly Hwnd[], probe: ZOrderProbe): InsertAfter {
+  const anchors = taskbars.filter((taskbar) => taskbar !== self && probe.isTopmost(taskbar))
+  if (anchors.length === 0) return HWND_TOPMOST
+  let lowest = anchors[0]
+  for (const taskbar of anchors.slice(1)) {
+    if (isAboveInZOrder(lowest, taskbar, probe)) lowest = taskbar
+  }
+  return probe.windowAbove(self) === lowest ? 'keep' : Number(lowest)
+}
+
 /** The z-order the guard enforces for `mode`. */
 export function guardTarget(
   mode: ZOrderMode,
   self: Hwnd,
   shell: Hwnd | null,
-  probe: ZOrderProbe
+  probe: ZOrderProbe,
+  taskbars: readonly Hwnd[] = []
 ): InsertAfter {
-  return mode === 'peek' ? HWND_TOPMOST : seatTarget(self, shell, probe)
+  return mode === 'peek' ? peekTarget(self, taskbars, probe) : seatTarget(self, shell, probe)
 }
 
 /** The z-order fields of a `WINDOWPOS`. */

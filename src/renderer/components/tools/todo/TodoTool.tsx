@@ -1,5 +1,7 @@
+import { ListTodo } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTasksStore } from '../../../stores/tasks'
+import { EmptyState } from '../../feedback/EmptyState'
 import { CompletedSection } from './CompletedSection'
 import { splitTasks } from './task-lists'
 import { TodoInput } from './TodoInput'
@@ -18,9 +20,12 @@ export function TodoTool(): React.JSX.Element {
       <TodoInput onAdd={(text) => useTasksStore.getState().add(text) !== null} />
       <div className="-mr-1 min-h-0 flex-1 overflow-y-auto pr-1 [scrollbar-width:thin]">
         {active.length === 0 && (
-          <p className="px-2 py-3 text-[12px] text-text-tertiary">
-            Nothing to do. Add a task above.
-          </p>
+          <EmptyState
+            icon={ListTodo}
+            title="Nothing to do."
+            hint="Add a task above."
+            className="py-6"
+          />
         )}
         <TodoList tasks={active} />
         <CompletedSection tasks={completed} />

@@ -47,8 +47,12 @@ describe('quick-hide', () => {
     await user.dblClick(surface())
 
     expect(useUiStore.getState().quickHidden).toBe(true)
+    // The loose layer fades with its own utility; a group with .group-window (motion.css: opacity
+    // 180 ms).
+    expect(looseLayer()).toHaveClass('duration-[180ms]')
+    expect(group('Work')).toHaveClass('group-window')
     for (const hidden of [looseLayer(), group('Work')]) {
-      expect(hidden).toHaveClass('opacity-0', 'duration-[180ms]')
+      expect(hidden).toHaveClass('opacity-0')
       expect(hidden).toHaveAttribute('aria-hidden', 'true')
       expect(hidden).toHaveAttribute('inert')
     }

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { axe } from 'vitest-axe'
 import { describe, expect, it, vi } from 'vitest'
 import type { DesktopItem } from '@shared/schema'
+import { useItemsStore } from '../../stores/items'
 import { desktopItem } from '../../test/canvas-fixtures'
 import { DesktopIcon } from './DesktopIcon'
 import { displayName } from './item-label'
@@ -135,6 +136,8 @@ describe('DesktopIcon', () => {
   })
 
   it('draws the glyph at the icon size: 40 px in a group, 48 px loose (medium)', () => {
+    // Past the first icon pass (Phase 12): no skeleton tiles, the generic glyph.
+    useItemsStore.getState().setIconsLoaded()
     renderIcon(desktopItem('1:1', 'a'), { iconSize: 'large' })
     expect(screen.getByRole('option').querySelector('img')).toHaveAttribute('width', '48')
     cleanup()

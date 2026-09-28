@@ -13,10 +13,22 @@ interface ItemIconProps {
 /**
  * An item's icon: the PNG main sent (`desktop:icon`, the sharpest so far) or, until then and for
  * items main never reads, the built-in icon for its kind. Decorative: the tile carries the name.
- * `data-icon` is the icon's pixel size, or `generic`.
+ * `data-icon` is the icon's pixel size, `generic`, or `skeleton` while the first icons load.
  */
 export function ItemIcon({ item, size = ICON_CSS_SIZE }: ItemIconProps): React.JSX.Element {
   const icon = useItemsStore((state) => state.icons[item.id])
+  const loaded = useItemsStore((state) => state.iconsLoaded)
+  if (!icon && !loaded) {
+    // Phase 12: a skeleton tile until main's first icon pass is over (then the generic icon).
+    return (
+      <span
+        data-icon="skeleton"
+        aria-hidden="true"
+        style={{ width: size, height: size }}
+        className="pointer-events-none block animate-pulse rounded-[10px] bg-white/15 [[data-theme=light]_&]:bg-black/10"
+      />
+    )
+  }
   return (
     <img
       src={icon?.dataUrl ?? genericIconUrl(item.kind)}

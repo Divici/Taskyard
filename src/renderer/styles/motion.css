@@ -1,0 +1,98 @@
+/* ============================================================================
+   motion.css — Taskyard's motion, built on the verbatim motion budget in motion-variables.css
+   (design-patterns/scroll-choreography). Never edit motion-variables.css; tune here.
+
+   1. Group entrance on launch: the `css-reveal` pattern. lib/motion.ts moves each group through
+      data-reveal="hidden" → "shown" → "settled"; the stagger is the inline `--i` custom property
+      (reading order) × 40 ms. The hidden opacity is var(--set-opacity), so the kill switch shows
+      every group with no JS at all.
+   2. Settled groups: hover lifts 2 px (the `translate` property, independent of any transform)
+      and roll-up animates the height over 160 ms. A group being dragged or resized animates
+      nothing about its size, so it never lags behind the pointer.
+   3. The kill switch: Settings › Reduce motion (`html.reduce-motion`, lib/theme.ts) or Windows'
+      "Animation effects" off (prefers-reduced-motion) strips EVERY transition and animation and
+      resets entrances to their FINAL state (00-architecture.md § motion-kill-switch).
+   ========================================================================= */
+
+@layer components {
+  .group-window {
+    transition:
+      opacity 180ms ease,
+      border-color 180ms ease,
+      background-color 180ms ease,
+      translate 160ms ease-out,
+      box-shadow 160ms ease-out,
+      height 160ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  /* css-reveal from-state: faded out, 12 px low. */
+  .group-window[data-reveal='hidden'] {
+    opacity: var(--set-opacity);
+    transform: translate3d(0, 12px, 0);
+  }
+
+  /* css-reveal `is-show`: the final state, reached over --transition after the stagger. */
+  .group-window[data-reveal='shown'] {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    transition:
+      opacity var(--transition),
+      transform var(--transition);
+    transition-delay: calc(var(--i, 0) * 40ms);
+  }
+
+  .group-window:hover:not([data-dragging]) {
+    translate: 0 -2px;
+    box-shadow:
+      inset 0 1px 0 var(--glass-highlight),
+      var(--glow),
+      0 10px 28px rgb(0 0 0 / 0.28);
+  }
+
+  /* Moving or resizing: the rect follows the pointer exactly. */
+  .group-window[data-dragging] {
+    transition:
+      opacity 180ms ease,
+      border-color 180ms ease;
+  }
+
+  html.reduce-motion .group-window[data-reveal] {
+    opacity: 1;
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .group-window[data-reveal] {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+/* The kill switch itself: unlayered and !important, so it beats every utility, component rule
+   and inline transition (dnd-kit's sortable rows set one inline). */
+html.reduce-motion * {
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -218,7 +218,9 @@ function startPrimaryInstance(): void {
   })
   /** The first dragged item's icon (as streamed to the renderers), else Windows' file icon. */
   async function dragIcon(ids: string[], files: string[]): Promise<Electron.NativeImage | null> {
-    const sent = desktopFiles?.icons().find((icon) => icon.id === ids[0] && icon.dataUrl !== null)
+    const sent = desktopFiles
+      ?.sentIcons()
+      .find((icon) => icon.id === ids[0] && icon.dataUrl !== null)
     if (sent?.dataUrl) {
       const image = nativeImage.createFromDataURL(sent.dataUrl)
       if (!image.isEmpty()) return image

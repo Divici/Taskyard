@@ -189,7 +189,9 @@ export const SettingsFileSchema = z.object({
   timerSound: z.boolean().default(S.timerSound),
   timerNotify: z.boolean().default(S.timerNotify),
   gridSnap: z.boolean().default(S.gridSnap),
-  firstRunDone: z.boolean().default(S.firstRunDone)
+  firstRunDone: z.boolean().default(S.firstRunDone),
+  // Phase 12, R7: the motion kill switch. A default, not a version bump: older files parse as off.
+  reduceMotion: z.boolean().default(S.reduceMotion)
 })
 
 // ---------------------------------------------------------------------------------------------

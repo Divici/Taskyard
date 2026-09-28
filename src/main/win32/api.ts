@@ -10,7 +10,8 @@ export type Hwnd = bigint
 
 /**
  * Where the z-order guard keeps a desktop window: `bottom` = directly above the shell desktop
- * window (normal), `peek` = `HWND_TOPMOST` (raised over every app).
+ * window (normal), `peek` = topmost, directly below the taskbars (raised over every app; Phase 12
+ * keeps Start, the clock and the tray usable above it).
  */
 export type ZOrderMode = 'bottom' | 'peek'
 
@@ -74,6 +75,13 @@ export interface Win32Api {
    * Null while Explorer is not running.
    */
   getShellWindow(): Hwnd | null
+  /**
+   * Phase 12: `hwnd` is part of using Taskyard's tray icon — a taskbar (`Shell_TrayWnd`,
+   * `Shell_SecondaryTrayWnd`), the tray's overflow flyout, or a window of Taskyard's own process
+   * (Electron's tray icon host, which takes the foreground while the tray menu is open). Pressing
+   * the icon focuses one of these before the click lands, so a Peek must not end on it.
+   */
+  isTrayWindow(hwnd: Hwnd): boolean
   /** True when `hwndA` is higher in the z-order than `hwndB`. */
   isAbove(hwndA: Hwnd, hwndB: Hwnd): boolean
   /** `WS_EX_TOPMOST` is set: the window is in the always-on-top band. */

@@ -5,6 +5,8 @@
 @import './tokens.css';
 @import './glass.css';
 @import './motion-variables.css';
+/* Phase 12: group entrance, hover lift, roll-up, and the kill switch (built on the variables). */
+@import './motion.css';
 
 /* `dark:` utilities follow the resolved theme (data-theme on <html>, see lib/theme.ts). */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));

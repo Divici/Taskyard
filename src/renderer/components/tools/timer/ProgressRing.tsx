@@ -1,4 +1,5 @@
 import { cn } from '../../../lib/utils'
+import { RING_RADIUS, RING_SIZE, RING_STROKE } from './ring-geometry'
 
 export interface ProgressRingProps {
   /** 0 (nothing left) to 1 (all of it left). */
@@ -10,9 +11,9 @@ export interface ProgressRingProps {
   children: React.ReactNode
 }
 
-const SIZE = 148
-const STROKE = 6
-const RADIUS = (SIZE - STROKE) / 2 - 6
+const SIZE = RING_SIZE
+const STROKE = RING_STROKE
+const RADIUS = RING_RADIUS
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
 /**

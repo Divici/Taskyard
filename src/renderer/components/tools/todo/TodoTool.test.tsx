@@ -31,7 +31,8 @@ describe('TodoTool', () => {
   it('shows the empty state until a task exists', () => {
     setup()
 
-    expect(screen.getByText('Nothing to do. Add a task above.')).toBeVisible()
+    const empty = screen.getByText('Nothing to do.').closest('[role="status"]')
+    expect(empty).toHaveTextContent('Nothing to do.Add a task above.')
   })
 
   it('Enter adds a task at the bottom and the input keeps focus', async () => {

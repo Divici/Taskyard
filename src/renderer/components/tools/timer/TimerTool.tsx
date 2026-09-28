@@ -7,6 +7,7 @@ import { timerController } from '../../../stores/timer'
 import { useUiStore } from '../../../stores/ui'
 import { splitTasks } from '../todo/task-lists'
 import { ProgressRing } from './ProgressRing'
+import { RING_LABEL } from './ring-geometry'
 import { useTimerTick } from './useTimerTick'
 
 const MINUTE = 60_000
@@ -167,7 +168,13 @@ export function TimerTool(): React.JSX.Element {
         >
           {formatClock(remaining)}
         </div>
-        <p className="mt-0.5 max-w-[118px] truncate text-center text-[11px] text-text-tertiary">
+        {/* Sized from the ring's inner circle (ring-geometry.ts): a long task name is cut short
+            inside the ring, never across its edge; the full text is the tooltip. */}
+        <p
+          title={status}
+          style={{ maxWidth: RING_LABEL.maxWidth }}
+          className="mt-0.5 truncate text-center text-[11px] leading-4 text-text-tertiary"
+        >
           {status}
         </p>
       </ProgressRing>

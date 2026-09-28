@@ -88,8 +88,33 @@ describe('seatSteps', () => {
 })
 
 describe('guardTarget', () => {
-  it('forces HWND_TOPMOST while peeking', () => {
+  it('forces HWND_TOPMOST while peeking when there is no taskbar', () => {
     expect(guardTarget('peek', SELF, SHELL, probe([0x301n, SHELL, SELF]))).toBe(HWND_TOPMOST)
+  })
+
+  it('Phase 12: peeks directly below the taskbar, so Start, the clock and the tray stay usable', () => {
+    const taskbar = 0x400n
+    const z = probe([taskbar, 0x301n, SHELL, SELF], [taskbar])
+    expect(guardTarget('peek', SELF, SHELL, z, [taskbar])).toBe(Number(taskbar))
+  })
+
+  it('Phase 12: with several taskbars (one per monitor), below the lowest one', () => {
+    const primary = 0x400n
+    const secondary = 0x401n
+    const z = probe([secondary, primary, 0x301n, SHELL, SELF], [primary, secondary])
+    expect(guardTarget('peek', SELF, SHELL, z, [primary, secondary])).toBe(Number(primary))
+  })
+
+  it('Phase 12: keeps its place when it already sits directly below the lowest taskbar', () => {
+    const taskbar = 0x400n
+    const z = probe([taskbar, SELF, 0x301n, SHELL], [taskbar, SELF])
+    expect(guardTarget('peek', SELF, SHELL, z, [taskbar])).toBe('keep')
+  })
+
+  it('Phase 12: a taskbar that is not topmost is no anchor (inserting after it would not raise us)', () => {
+    const taskbar = 0x400n
+    const z = probe([taskbar, 0x301n, SHELL, SELF])
+    expect(guardTarget('peek', SELF, SHELL, z, [taskbar])).toBe(HWND_TOPMOST)
   })
 
   it('seats above the shell window otherwise', () => {

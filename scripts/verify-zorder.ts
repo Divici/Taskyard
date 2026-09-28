@@ -23,9 +23,14 @@
  * on briefly (the original setting is journaled to a temp file first and restored; a run that
  * was killed is healed at the start of the next one), the cursor moves (restored), and one
  * Notepad or stand-in window is opened and closed. Pass --no-build to skip `npm run build`.
+ *
+ * Target (Phase 12): the dev build by default; `--packaged` runs dist/win-unpacked/Taskyard.exe
+ * from `npm run dist`; `--exe <path>` runs any Taskyard.exe (e.g. the installed copy). The temp
+ * profile has Start with Windows off, so a packaged run never writes the Run key.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { join } from 'node:path'
+import { existsSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import koffi from 'koffi'
 import type { Hwnd } from '../src/main/win32/api'
 import { WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_EX_TOPMOST } from '../src/main/win32/constants'
@@ -45,6 +50,8 @@ import { ABS_AUTOHIDE, isTaskbarRevealed, withAutoHide } from './lib/taskbar-sta
 import { launchStandInApp, STAND_IN_TITLE } from './lib/stand-in-app'
 import { loadScriptWin32 } from './lib/win32-script'
 import { formatCheck, formatSummary, notRun, type CheckResult } from './lib/zorder-report'
+import { zorderTarget } from './lib/zorder-target'
+import { defaultSettings } from '../src/shared/defaults'
 
 const TITLES = [
   'The app window just opened is above every Taskyard window',
@@ -75,6 +82,10 @@ const win32 = loadScriptWin32(koffi)
 const api = createKoffiWin32Api(koffi, { log: console })
 const explorer = explorerControl(win32, { info: log, warn: log })
 const journal = appbarJournal()
+const target = zorderTarget(process.argv.slice(2), resolve(__dirname, '..'), {
+  electron: ELECTRON_BINARY,
+  main: MAIN_ENTRY
+})
 
 /** Undo steps, run newest first, once, from `finally` or a signal handler. */
 interface Cleanup {
@@ -368,8 +379,13 @@ async function checkExplorerRestart(taskyard: Hwnd[]): Promise<CheckResult> {
 async function run(results: (CheckResult | undefined)[]): Promise<void> {
   const profile = createProfile()
   addCleanup('delete the temp profile', () => disposeProfile(profile))
-  log(`launching ${MAIN_ENTRY} with TASKYARD_USER_DATA=${profile.userData}`)
-  const child = spawn(ELECTRON_BINARY, [MAIN_ENTRY], { env: taskyardEnv(profile), stdio: 'ignore' })
+  // Start with Windows off: a packaged exe would otherwise register itself in the Run key.
+  writeFileSync(
+    join(profile.userData, 'settings.json'),
+    JSON.stringify({ ...defaultSettings(), autostart: false, firstRunDone: true })
+  )
+  log(`launching ${target.label} with TASKYARD_USER_DATA=${profile.userData}`)
+  const child = spawn(target.command, target.args, { env: taskyardEnv(profile), stdio: 'ignore' })
   addCleanup('close Taskyard', () => killTree(child))
   if (child.pid === undefined) throw new Error('Taskyard did not start')
   const pid = child.pid
@@ -504,7 +520,11 @@ async function main(): Promise<number> {
     log('explorer.exe is not running (an interrupted run?); starting it')
     if (!explorer.ensureRunning()) throw new Error('explorer.exe could not be started')
   }
-  if (!process.argv.includes('--no-build')) build()
+  if (target.kind === 'packaged' && !existsSync(target.command)) {
+    log(`${target.command} not found (run "npm run dist" first)`)
+    return 1
+  }
+  if (target.build) build()
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.once(signal, onSignal)
 
   const partial: (CheckResult | undefined)[] = []

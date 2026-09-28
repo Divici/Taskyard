@@ -287,6 +287,12 @@ export function Inspector({ displayId, area }: InspectorProps): React.JSX.Elemen
             checked={settings.timerNotify}
             onCheckedChange={(timerNotify) => update({ timerNotify })}
           />
+          <SettingSwitch
+            label="Reduce motion"
+            description="No entrance or hover animations. Windows’ “Animation effects” off does the same."
+            checked={settings.reduceMotion}
+            onCheckedChange={(reduceMotion) => update({ reduceMotion })}
+          />
         </InspectorSection>
 
         <InspectorSection title="Data">

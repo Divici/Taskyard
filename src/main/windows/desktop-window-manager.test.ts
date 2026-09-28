@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
-import { createFakeWin32Api, FAKE_APP_WINDOW, type FakeWin32Api } from '../win32/fake-api'
+import {
+  createFakeWin32Api,
+  FAKE_APP_WINDOW,
+  FAKE_TASKBAR_WINDOW,
+  FAKE_TRAY_HOST_WINDOW,
+  type FakeWin32Api
+} from '../win32/fake-api'
 import {
   createFakeElectron,
   fakeDisplay,
@@ -296,6 +302,30 @@ describe('peek', () => {
     api.emitForeground(windows()[0].hwnd)
     api.emitForeground(api.getShellWindow())
     api.emitForeground(null)
+
+    expect(manager.peeking).toBe(true)
+  })
+
+  it('Phase 12: keeps the peek when the taskbar takes the foreground (a click on the tray icon), so the tray Peek toggle turns it off rather than back on', () => {
+    start()
+    allReady()
+    manager.peek(true)
+
+    // Pressing the tray icon focuses the taskbar (or its overflow flyout) before the click lands.
+    api.emitForeground(FAKE_TASKBAR_WINDOW)
+    expect(manager.peeking).toBe(true)
+
+    // The tray's toggle then sees the Peek it was pressed over, and ends it.
+    manager.peek(!manager.peeking)
+    expect(manager.peeking).toBe(false)
+  })
+
+  it('Phase 12: keeps the peek while the tray menu is open (Windows focuses Taskyard’s own tray icon window for it)', () => {
+    start()
+    allReady()
+    manager.peek(true)
+
+    api.emitForeground(FAKE_TRAY_HOST_WINDOW)
 
     expect(manager.peeking).toBe(true)
   })

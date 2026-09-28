@@ -7,10 +7,11 @@
  * Exit 0 on success; 1 on timeout, a logged load failure, or an early exit (log tail printed).
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { ENV } from '../src/main/app/env'
+import { defaultSettings } from '../src/shared/defaults'
 import { LOG_FILE_NAME } from '../src/main/app/logger'
 import { findKoffiResult, pollUntil, tailLines, type KoffiLogResult } from './lib/koffi-log'
 
@@ -61,6 +62,11 @@ async function main(): Promise<number> {
   const userData = mkdtempSync(join(tmpdir(), 'taskyard-verify-koffi-'))
   const desktop = join(userData, 'desktop')
   mkdirSync(desktop)
+  // Start with Windows off: the packaged app would otherwise register itself in the Run key.
+  writeFileSync(
+    join(userData, 'settings.json'),
+    JSON.stringify({ ...defaultSettings(), autostart: false })
+  )
   const logFile = join(userData, 'logs', LOG_FILE_NAME)
   const readLog = (): string => (existsSync(logFile) ? readFileSync(logFile, 'utf8') : '')
 

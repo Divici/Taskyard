@@ -53,6 +53,8 @@ export interface Win32Bindings {
     flags: number
   ): bigint | null
   UnhookWinEvent(hook: bigint): boolean
+  /** Phase 12: `GetWindowThreadProcessId`'s process id (0 for a window that is gone). */
+  processIdOf(hwnd: Hwnd): number
   SystemParametersInfoW(
     action: number,
     uiParam: number,
@@ -178,6 +180,9 @@ export function loadWin32Bindings(koffi: Koffi): Win32Bindings {
     user32.func('__stdcall', 'GetCursorPos', 'int', [koffi.out(koffi.pointer(POINT))])
   )
   const WindowFromPoint = user32.func('__stdcall', 'WindowFromPoint', 'void *', [POINT])
+  const GetWindowThreadProcessId = user32.func(
+    'uint32_t __stdcall GetWindowThreadProcessId(void *hwnd, _Out_ uint32_t *pid)'
+  )
   const IsWindowVisible = toBool(user32.func('int __stdcall IsWindowVisible(void *hwnd)'))
   const IsIconic = toBool(user32.func('int __stdcall IsIconic(void *hwnd)'))
   const GetWindowRect = toBool(
@@ -228,6 +233,11 @@ export function loadWin32Bindings(koffi: Koffi): Win32Bindings {
       'uint32_t'
     ]),
     UnhookWinEvent: toBool(user32.func('int __stdcall UnhookWinEvent(void *hook)')),
+    processIdOf: (hwnd) => {
+      const pid: [number] = [0]
+      GetWindowThreadProcessId(hwnd, pid)
+      return pid[0]
+    },
     SystemParametersInfoW: toBool(
       user32.func(
         'int __stdcall SystemParametersInfoW(uint32_t action, uint32_t uiParam, void *pvParam, uint32_t winIni)'

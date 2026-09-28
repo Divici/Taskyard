@@ -58,9 +58,13 @@ export function connectDesktop(
         if (!connected) return
         const items = targets.items.getState()
         for (const { id, px, dataUrl, version } of icons) items.setIcon(id, px, dataUrl, version)
+        // Main answers once its icon pass is idle: the skeleton tiles can go.
+        items.setIconsLoaded()
       },
       (error: unknown) => {
-        if (connected) console.error('desktop: fetching the icons failed', error)
+        if (!connected) return
+        console.error('desktop: fetching the icons failed', error)
+        targets.items.getState().setIconsLoaded()
       }
     )
   }

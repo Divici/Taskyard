@@ -1,6 +1,7 @@
 import { GROUP_BODY_PADDING, groupCell, groupColumns, type IconSize } from '@shared/group-metrics'
 import type { DesktopItem, Group } from '@shared/schema'
 import { gridNeighbor } from '../../lib/keyboard'
+import { EmptyState } from '../feedback/EmptyState'
 import { DesktopIcon } from '../icon/DesktopIcon'
 import { IconContextMenu } from '../icon/IconContextMenu'
 import { useItemList } from '../icon/useItemList'
@@ -85,12 +86,8 @@ export function GroupBody({
 
   if (items.length === 0) {
     return (
-      <div
-        ref={bodyRef}
-        {...grid}
-        className="flex min-h-0 flex-1 items-center justify-center p-3 text-center text-[11px] tracking-wide text-text-tertiary"
-      >
-        Drop icons here
+      <div ref={bodyRef} {...grid} className="flex min-h-0 flex-1 items-center justify-center">
+        <EmptyState title="Drop icons here" />
       </div>
     )
   }

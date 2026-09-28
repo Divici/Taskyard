@@ -185,4 +185,12 @@ describe('items store', () => {
     store.getState().setIcon('1:2', 0, null, 'generic') // nothing to clear: no error
     expect(store.getState().icons).toEqual({})
   })
+
+  it('Phase 12: iconsLoaded starts false and turns (and stays) true', () => {
+    const store = createItemsStore()
+    expect(store.getState().iconsLoaded).toBe(false)
+    store.getState().setIconsLoaded()
+    store.getState().setIconsLoaded()
+    expect(store.getState().iconsLoaded).toBe(true)
+  })
 })

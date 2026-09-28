@@ -17,6 +17,7 @@ import { OpsJournal } from '../storage/ops-journal'
 import { createFakeWin32Api, type FakeWin32Api } from '../win32/fake-api'
 import {
   createDesktopService,
+  ICONS_SETTLE_CAP_MS,
   type DesktopService,
   type DesktopServiceDeps
 } from './desktop-service'
@@ -240,7 +241,12 @@ describe('desktop service', () => {
     writeFileSync(join(desktop, 'a.txt'), '')
     const id = idOf(join(desktop, 'a.txt'))
     const sent = [{ id, px: 96, dataUrl: 'data:image/png;base64,AA', version: 'v1' }]
-    const icons = { update: vi.fn(), renamed: vi.fn(), list: vi.fn(() => sent) }
+    const icons = {
+      update: vi.fn(),
+      renamed: vi.fn(),
+      list: vi.fn(() => sent),
+      idle: vi.fn(async () => {})
+    }
     service = create({ icons })
 
     const report = await service.scan()
@@ -253,12 +259,51 @@ describe('desktop service', () => {
     expect(icons.update.mock.calls[0]).toEqual([{ added: report.items, removed: [], changed: [] }])
     expect(icons.update).toHaveBeenLastCalledWith({ added: [], removed: [id], changed: [] })
     expect(icons.renamed).toHaveBeenCalledExactlyOnceWith(id, join(desktop, 'b.txt'))
-    expect(service.icons()).toEqual(sent)
+    expect(await service.icons()).toEqual(sent)
+    // The drag-out image reads them without waiting for the pass.
+    expect(service.sentIcons()).toEqual(sent)
   })
 
   it('answers desktop:icons with nothing when there is no icon service', async () => {
     service = create()
-    expect(service.icons()).toEqual([])
+    expect(await service.icons()).toEqual([])
+  })
+
+  it('Phase 12: desktop:icons answers once the icon pass is idle, so the renderer knows its skeletons can go', async () => {
+    let finishPass = (): void => {}
+    const pass = new Promise<void>((resolve) => (finishPass = resolve))
+    const sent = [{ id: '1:2', px: 96, dataUrl: 'data:image/png;base64,AA', version: 'v1' }]
+    const icons = { update: vi.fn(), renamed: vi.fn(), list: vi.fn(() => sent), idle: () => pass }
+    service = create({ icons })
+
+    let answered = false
+    const answer = service.icons().then((list) => {
+      answered = true
+      return list
+    })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(answered).toBe(false)
+
+    finishPass()
+    expect(await answer).toEqual(sent)
+  })
+
+  it(`Phase 12: a pass still running after ${ICONS_SETTLE_CAP_MS} ms does not hold desktop:icons back`, async () => {
+    vi.useFakeTimers()
+    try {
+      const icons = {
+        update: vi.fn(),
+        renamed: vi.fn(),
+        list: vi.fn(() => []),
+        idle: () => new Promise<void>(() => {})
+      }
+      service = create({ icons })
+      const answer = service.icons()
+      await vi.advanceTimersByTimeAsync(ICONS_SETTLE_CAP_MS)
+      await expect(answer).resolves.toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('pathsOf: the current paths of known ids, in order, skipping unknown ones (Phase 8 drag-out)', async () => {

@@ -81,6 +81,41 @@ describe('Marquee', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
+  it('Phase 12: a drag whose pointer capture Chromium drops (right after load) still finishes, from events on whatever is under the pointer', () => {
+    const surface = renderCanvas()
+    const init = { button: 2, buttons: 2, pointerId: 1, isPrimary: true }
+    fireEvent.pointerDown(surface, { ...init, clientX: 10, clientY: 10 })
+    fireEvent.lostPointerCapture(surface, { pointerId: 1 })
+    // Without the capture, the rest of the drag lands on the icons under the pointer.
+    const icon = screen.getByRole('option', { name: 'b' })
+    fireEvent.pointerMove(icon, { ...init, clientX: 90, clientY: 100 })
+    fireEvent.pointerMove(icon, { ...init, clientX: 180, clientY: 200 })
+    expect(useUiStore.getState().marquee).toEqual({ x: 10, y: 10, width: 170, height: 190 })
+    fireEvent.pointerUp(icon, { button: 2, pointerId: 1, clientX: 180, clientY: 200 })
+
+    expect(groups()).toHaveLength(1)
+    expect(groups()[0]).toMatchObject({ x: 8, y: 8, w: 168, h: 192, items: ['1:1', '1:2'] })
+    // The release's context menu on the icon opens nothing.
+    fireEvent.contextMenu(icon, { clientX: 180, clientY: 200 })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('Phase 12: once a drag has ended normally, a late lost capture changes nothing', () => {
+    const surface = renderCanvas()
+    drag(surface, 0, [150, 150], [60, 60])
+    release(surface, 0, [60, 60])
+    fireEvent.lostPointerCapture(surface, { pointerId: 1 })
+    fireEvent.pointerMove(surface, {
+      button: 0,
+      buttons: 0,
+      pointerId: 1,
+      clientX: 400,
+      clientY: 400
+    })
+    expect(useUiStore.getState().marquee).toBeNull()
+    expect(useUiStore.getState().selection.sort()).toEqual(['1:1', '1:2'])
+  })
+
   it('after a right-drag, the release’s context menu opens nowhere — not on the new group, not on an icon — and the rename stays open', () => {
     const surface = renderCanvas()
     // An up-left drag: the release lands inside the new (grown) group.

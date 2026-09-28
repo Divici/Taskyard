@@ -15,8 +15,19 @@ npmRebuild: false
 win:
   target: nsis
   requestedExecutionLevel: asInvoker
+# Phase 12: a one-click, per-user installer (no admin prompt; %LOCALAPPDATA%\Programs\Taskyard),
+# launched when it finishes. No desktop shortcut: Taskyard IS the desktop, and a shortcut to
+# itself would appear as an icon on it. The Start menu shortcut stays. Uninstalling keeps the
+# user's layout, tasks and settings in %APPDATA%\Taskyard (a reinstall picks them up) and removes
+# the Start with Windows entry (build/installer.nsh).
 nsis:
+  oneClick: true
+  perMachine: false
+  runAfterFinish: true
+  createDesktopShortcut: false
+  createStartMenuShortcut: true
+  deleteAppDataOnUninstall: false
+  include: build/installer.nsh
   artifactName: ${productName}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
-  createDesktopShortcut: always

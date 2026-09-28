@@ -2,6 +2,7 @@ import { useId, useRef, useState } from 'react'
 import { GROUP_HEADER_HEIGHT } from '@shared/group-metrics'
 import type { Rect, TimerState } from '@shared/schema'
 import { formatClock } from '@shared/timer-state'
+import { openMenuFromKey } from '../../lib/context-menu-key'
 import { cn } from '../../lib/utils'
 import { useLayoutStore } from '../../stores/layout'
 import { useSettingsStore } from '../../stores/settings'
@@ -113,6 +114,8 @@ export function ToolsWidget({
         data-peek-keep=""
         data-rolled-up={tools.rolledUp || undefined}
         data-dragging={drag.dragging || resizing || undefined}
+        // Shift+F10 / the menu key inside the widget: the tools menu (fields keep their own).
+        onKeyDown={(event) => openMenuFromKey(event)}
         style={{
           left: rect.x,
           top: rect.y,
@@ -121,7 +124,8 @@ export function ToolsWidget({
           zIndex
         }}
         className={cn(
-          'glass absolute flex flex-col transition-[opacity,border-color] duration-[180ms] hover:border-accent-1/50',
+          // Transitions (hover lift, roll-up height): styles/motion.css, shared with the groups.
+          'glass group-window absolute flex flex-col hover:border-accent-1/50',
           hidden && 'pointer-events-none opacity-0'
         )}
       >

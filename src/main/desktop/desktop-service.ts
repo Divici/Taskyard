@@ -32,6 +32,27 @@ export interface DesktopIcons {
   update(change: DesktopChange): void
   renamed(id: string, path: string): void
   list(): DesktopIcon[]
+  /** Resolves when no icon work is queued or running. */
+  idle(): Promise<void>
+}
+
+/**
+ * Phase 12: how long desktop:icons waits for the icon pass to go idle before answering with what
+ * it has. The renderer shows skeleton tiles until the answer; a slow pass must not hold them.
+ */
+export const ICONS_SETTLE_CAP_MS = 2_000
+
+/** `pass` or the cap, whichever comes first (the cap's timer never outlives the answer). */
+async function settled(pass: Promise<void>, capMs: number): Promise<void> {
+  let timer: NodeJS.Timeout | undefined
+  const cap = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, capMs)
+  })
+  try {
+    await Promise.race([pass.catch(() => undefined), cap])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export interface DesktopServiceDeps {
@@ -54,6 +75,10 @@ export interface DesktopServiceDeps {
 }
 
 export interface DesktopService extends DesktopIpcTarget {
+  /** Phase 12: desktop:icons waits for the icon pass; this is the icons sent so far, at once. */
+  icons(): Promise<DesktopIcon[]>
+  /** The icons sent so far, without waiting (the drag-out image). */
+  sentIcons(): DesktopIcon[]
   /** Boot step "scan": the full list (also emitted as desktop:changed) and the log line. */
   scan(): Promise<ScanReport>
   /** Boot step "watch": starts the file watcher (a no-op after `stop`). */
@@ -206,7 +231,13 @@ export function createDesktopService(deps: DesktopServiceDeps): DesktopService {
 
     rescan: () => tracker.rescan(),
 
-    icons: () => deps.icons?.list() ?? [],
+    sentIcons: () => deps.icons?.list() ?? [],
+
+    async icons() {
+      if (!deps.icons) return []
+      await settled(deps.icons.idle(), ICONS_SETTLE_CAP_MS)
+      return deps.icons.list()
+    },
 
     pathsOf: (ids) =>
       ids.map((id) => model.get(id)?.path).filter((path): path is string => path !== undefined),

@@ -19,7 +19,8 @@ import {
   SettingsFileSchema,
   TasksFileSchema,
   TaskSchema,
-  TimerStateSchema
+  TimerStateSchema,
+  type SettingsFile
 } from './schema'
 
 const item = {
@@ -230,9 +231,17 @@ describe('SettingsFileSchema', () => {
       timerSound: true,
       timerNotify: true,
       gridSnap: true,
-      firstRunDone: false
+      firstRunDone: false,
+      reduceMotion: false
     })
     expect(SettingsFileSchema.parse({ version: 1 })).toEqual(defaultSettings())
+  })
+
+  it('Phase 12: a settings file written before reduceMotion existed keeps motion on', () => {
+    const before: Partial<SettingsFile> = defaultSettings()
+    delete before.reduceMotion
+    expect(SettingsFileSchema.parse(before).reduceMotion).toBe(false)
+    expect(SettingsFileSchema.parse({ ...before, reduceMotion: true }).reduceMotion).toBe(true)
   })
 
   it('bounds glassOpacity to 0–100 and glassBlur to 0–40', () => {

@@ -23,6 +23,7 @@ afterEach(() => {
   root.removeAttribute('data-accent')
   root.removeAttribute('data-glow')
   root.removeAttribute('style')
+  root.classList.remove('reduce-motion')
 })
 
 describe('resolveTheme', () => {
@@ -70,6 +71,18 @@ describe('themeAttributes / applyTheme', () => {
     )
     expect(root.dataset.accent).toBe('purple')
     expect(root.dataset.glow).toBe('off')
+  })
+
+  it('Phase 12: the reduce-motion kill switch puts the reduce-motion class on the root', () => {
+    const root = document.createElement('div')
+    applyTheme(root, themeAttributes(defaultSettings(), DARK_OS))
+    expect(root.classList.contains('reduce-motion')).toBe(false)
+
+    applyTheme(root, themeAttributes({ ...defaultSettings(), reduceMotion: true }, DARK_OS))
+    expect(root.classList.contains('reduce-motion')).toBe(true)
+
+    applyTheme(root, themeAttributes(defaultSettings(), DARK_OS))
+    expect(root.classList.contains('reduce-motion')).toBe(false)
   })
 
   it('sets data-reduced-transparency when Windows has transparency effects off', () => {

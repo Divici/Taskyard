@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { clampRect, localWorkArea } from '@shared/geometry'
 import { looseCell } from '@shared/group-metrics'
 import type { DisplayInfo } from '@shared/ipc'
@@ -13,6 +13,8 @@ import {
   refreshDesktop,
   sortLooseIcons
 } from '../../lib/canvas-actions'
+import { openMenuFromKey } from '../../lib/context-menu-key'
+import { LAUNCH_REVEAL_WINDOW_MS, revealOrder } from '../../lib/motion'
 import { toggleQuickHide } from '../../lib/quick-hide'
 import { isPrimaryDisplay } from '../../lib/reconcile-sync'
 import { useItemsStore } from '../../stores/items'
@@ -77,6 +79,20 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
   const cell = looseCell(settings.iconSize)
 
   const stacked = useMemo(() => [...groups].sort((a, b) => a.z - b.z), [groups])
+
+  // Phase 12: the groups present at launch enter one after another (lib/motion.ts); a group
+  // made later — or made by the user while the launch entrance runs — just appears.
+  const [mountedAt] = useState(() => Date.now())
+  const [launching, setLaunching] = useState(true)
+  useEffect(() => {
+    if (!layoutHydrated || !launching) return
+    const timer = setTimeout(() => setLaunching(false), LAUNCH_REVEAL_WINDOW_MS)
+    return () => clearTimeout(timer)
+  }, [layoutHydrated, launching])
+  const entrance = useMemo(
+    () => (launching ? revealOrder(groups.filter((group) => group.createdAt < mountedAt)) : null),
+    [launching, groups, mountedAt]
+  )
   const looseTargets = useMemo(
     () =>
       Object.entries(loose)
@@ -123,7 +139,14 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
         >
           <div
             data-canvas-surface=""
-            className="absolute inset-0"
+            // Phase 12: the desktop itself is a Tab stop, so its menu has a keyboard route
+            // (Shift+F10 / the menu key), as on the Windows desktop.
+            role="application"
+            aria-label="Desktop"
+            aria-roledescription="desktop"
+            tabIndex={0}
+            onKeyDown={(event) => openMenuFromKey(event, 'center')}
+            className="absolute inset-0 outline-none focus-visible:ring-2 focus-visible:ring-accent-1/60 focus-visible:ring-inset"
             {...marquee.handlers}
             onDoubleClick={() => {
               // Phase 9: every display hides together (lib/quick-hide.ts).
@@ -149,6 +172,7 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
             area={area}
             stackIndex={index + 1}
             hidden={quickHidden && !group.excludeFromQuickHide}
+            revealIndex={entrance?.get(group.id)}
           />
         ))}
         {/* Phase 10: the tools widget (above the groups) and the timer's completion watcher. */}

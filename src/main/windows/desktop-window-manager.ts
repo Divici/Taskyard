@@ -420,12 +420,16 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
   }
 
   /**
-   * Phase 9: another app came to the front (taskbar click, Alt+Tab) — the user has left the
-   * Peek, so it ends. Our own windows and the shell window (Win+D) do not end it.
+   * Phase 9: another app came to the front (a taskbar button, Alt+Tab) — the user has left the
+   * Peek, so it ends. Our own windows and the shell window (Win+D) do not end it, nor (Phase 12)
+   * the tray (the taskbar, its overflow flyout, or our own tray icon window while the tray menu
+   * is open): using Taskyard's tray icon focuses them first, and ending the Peek there would make
+   * the tray's Peek toggle turn it straight back on.
    */
   const endPeekOnForeignForeground = (hwnd: Hwnd | null): void => {
     if (!peeking || hwnd === null || hwnd === api.getShellWindow()) return
     if (all().some((desktop) => desktop.hwnd === hwnd)) return
+    if (api.isTrayWindow(hwnd)) return
     log.info('peek: another app took the foreground, unpeeking')
     peek(false)
   }

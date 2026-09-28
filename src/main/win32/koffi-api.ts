@@ -119,6 +119,25 @@ export function createKoffiWin32Api(koffi: Koffi, options: KoffiWin32ApiOptions)
     findWindow: (parent, after, className) => b.FindWindowExW(parent, after, className, null)
   }
   const getShellWindow = (): Hwnd | null => resolveShellWindow(tree)
+  /** Phase 12: the tray's overflow flyout (Windows 11, then Windows 10), when it exists. */
+  const trayOverflow = (): Hwnd[] =>
+    ['TopLevelWindowForOverflowXamlIsland', 'NotifyIconOverflowWindow']
+      .map((className) => b.FindWindowExW(null, null, className, null))
+      .filter((hwnd): hwnd is Hwnd => hwnd !== null)
+  /** Phase 12: every taskbar (primary and per-monitor), which a Peek stays below. */
+  const taskbars = (): Hwnd[] => {
+    const found: Hwnd[] = []
+    const primary = b.FindWindowExW(null, null, 'Shell_TrayWnd', null)
+    if (primary !== null) found.push(primary)
+    for (
+      let hwnd = b.FindWindowExW(null, null, 'Shell_SecondaryTrayWnd', null);
+      hwnd !== null && found.length < 16;
+      hwnd = b.FindWindowExW(null, hwnd, 'Shell_SecondaryTrayWnd', null)
+    ) {
+      found.push(hwnd)
+    }
+    return found
+  }
 
   // A callback may be the one currently on the stack (a window closed from inside its own
   // message), so it is released on a later turn; until then it stays referenced.
@@ -137,7 +156,13 @@ export function createKoffiWin32Api(koffi: Koffi, options: KoffiWin32ApiOptions)
   const guardWindowPos = (hwnd: Hwnd, lParam: number, mode: ZOrderMode): void => {
     const pointer = BigInt(lParam)
     const pos = koffi.decode(pointer, b.WINDOWPOS) as { hwndInsertAfter: number; flags: number }
-    const target = guardTarget(mode, hwnd, getShellWindow(), probe)
+    const target = guardTarget(
+      mode,
+      hwnd,
+      getShellWindow(),
+      probe,
+      mode === 'peek' ? taskbars() : []
+    )
     const next = rewriteWindowPos(pos, target)
     if (next === null) return
     koffi.encode(
@@ -231,6 +256,11 @@ export function createKoffiWin32Api(koffi: Koffi, options: KoffiWin32ApiOptions)
     },
 
     getShellWindow,
+
+    isTrayWindow: (hwnd) =>
+      taskbars().includes(hwnd) ||
+      trayOverflow().includes(hwnd) ||
+      b.processIdOf(hwnd) === process.pid,
 
     isAbove: (hwndA, hwndB) => isAboveInZOrder(hwndA, hwndB, probe),
 

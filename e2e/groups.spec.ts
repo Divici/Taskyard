@@ -18,16 +18,24 @@ function savedGroups(profile: Profile): LayoutFile['displays'][number]['groups']
   }
 }
 
+/**
+ * A group's layout rect (CSS left/top/size in the canvas): what the layout stores. Not the
+ * bounding box, which the Phase 12 hover lift (2 px) and launch entrance move on screen.
+ */
 async function box(
   locator: Locator
 ): Promise<{ x: number; y: number; width: number; height: number }> {
-  const rect = await locator.boundingBox()
-  expect(rect).not.toBeNull()
-  return rect!
+  return locator.evaluate((element: HTMLElement) => ({
+    x: element.offsetLeft,
+    y: element.offsetTop,
+    width: element.offsetWidth,
+    height: element.offsetHeight
+  }))
 }
 
+/** Where a locator is on screen right now (for the pointer). */
 async function center(locator: Locator): Promise<{ x: number; y: number }> {
-  const rect = await box(locator)
+  const rect = (await locator.boundingBox())!
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
 }
 
@@ -105,7 +113,7 @@ test('a right-button drag on the desktop draws a group around the icons (no menu
     await expect(notes).toBeVisible()
     // The first-run card (Phase 11) sits mid-screen, where the second drag below happens.
     await page.getByRole('button', { name: 'Keep my desktop as it is' }).click()
-    const icon = await box(notes)
+    const icon = (await notes.boundingBox())!
 
     // From above-left of the first column to below the second icon.
     const start = { x: icon.x + icon.width + 40, y: 8 }

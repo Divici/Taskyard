@@ -23,6 +23,12 @@ export interface ItemsState {
   byId: Record<string, DesktopItem>
   icons: Record<string, ItemIcon>
   hydrated: boolean
+  /**
+   * Phase 12: main has answered desktop:icons (it answers once its icon pass is idle). Until
+   * then an item without an icon shows a skeleton tile; after, the generic icon for its kind.
+   */
+  iconsLoaded: boolean
+  setIconsLoaded(): void
   /** Replaces every item with a full scan; icons for ids not in it are dropped. */
   hydrate(list: DesktopItem[]): void
   applyChange(change: DesktopChange): void
@@ -60,6 +66,11 @@ export function createItemsStore(): UseBoundStore<StoreApi<ItemsState>> {
     byId: {},
     icons: {},
     hydrated: false,
+    iconsLoaded: false,
+
+    setIconsLoaded() {
+      if (!get().iconsLoaded) set({ iconsLoaded: true })
+    },
 
     hydrate(list) {
       const byId = Object.fromEntries(list.map((item) => [item.id, item]))

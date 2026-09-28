@@ -154,7 +154,8 @@ describe('Inspector', () => {
       ['Start with Windows', 'autostart', true],
       ['Tools widget', 'toolsEnabled', true],
       ['Timer sound', 'timerSound', true],
-      ['Timer notification', 'timerNotify', true]
+      ['Timer notification', 'timerNotify', true],
+      ['Reduce motion', 'reduceMotion', false]
     ] as const)('%s switches settings.%s', async (label, field, initial) => {
       const { bridge, panel, user } = setup()
       const toggle = within(panel).getByRole('switch', { name: label })

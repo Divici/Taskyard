@@ -15,6 +15,10 @@ import type {
 export const FAKE_SHELL_WINDOW = 0x10010n
 /** The fake's initial ordinary app window, above the shell window. */
 export const FAKE_APP_WINDOW = 0x20020n
+/** The fake's taskbar (Shell_TrayWnd): part of the tray for `isTrayWindow`. */
+export const FAKE_TASKBAR_WINDOW = 0x30030n
+/** The fake's own tray icon host window (Electron_NotifyIconHostWindow in Taskyard's process). */
+export const FAKE_TRAY_HOST_WINDOW = 0x40040n
 
 export interface FakeCall {
   method: keyof Win32Api
@@ -209,6 +213,10 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
     getShellWindow() {
       record('getShellWindow', [])
       return shell
+    },
+    isTrayWindow(hwnd) {
+      record('isTrayWindow', [hwnd])
+      return hwnd === FAKE_TASKBAR_WINDOW || hwnd === FAKE_TRAY_HOST_WINDOW
     },
     isAbove(a, b) {
       record('isAbove', [a, b])

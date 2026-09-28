@@ -46,7 +46,9 @@ export const SETTINGS_VALUES = {
   timerSound: true,
   timerNotify: true,
   gridSnap: true,
-  firstRunDone: false
+  firstRunDone: false,
+  /** Phase 12: the motion kill switch (Settings › Behavior › Reduce motion). */
+  reduceMotion: false
 } as const
 
 export const DEFAULT_TIMER: Readonly<TimerState> = {

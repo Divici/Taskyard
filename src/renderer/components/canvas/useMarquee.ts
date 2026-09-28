@@ -48,12 +48,13 @@ export interface MarqueeOptions {
 export interface MarqueeApi {
   /** Spread on the canvas surface. */
   handlers: {
+    /** The press; its moves and release are followed on `window` until the button comes up. */
     onPointerDown(event: React.PointerEvent<HTMLElement>): void
-    onPointerMove(event: React.PointerEvent<HTMLElement>): void
-    onPointerUp(event: React.PointerEvent<HTMLElement>): void
-    onPointerCancel(event: React.PointerEvent<HTMLElement>): void
   }
 }
+
+/** The parts of a pointer event the band needs (React's or a native one). */
+type PointerAt = Pick<PointerEvent, 'pointerId' | 'clientX' | 'clientY'>
 
 interface Press {
   pointerId: number
@@ -73,9 +74,17 @@ interface Press {
 export function useMarquee({ targets, onDrawGroup }: MarqueeOptions): MarqueeApi {
   const press = useRef<Press | null>(null)
   const disarmSwallow = useRef<(() => void) | null>(null)
-  useEffect(() => () => disarmSwallow.current?.(), [])
+  /** Stops following the press on `window`, if one is on. */
+  const unfollow = useRef<(() => void) | null>(null)
+  useEffect(
+    () => () => {
+      disarmSwallow.current?.()
+      unfollow.current?.()
+    },
+    []
+  )
 
-  const bandFor = (event: React.PointerEvent, origin: Point): Rect =>
+  const bandFor = (event: PointerAt, origin: Point): Rect =>
     normalizeRect(origin, { x: event.clientX, y: event.clientY })
 
   const touched = (band: Rect): string[] =>
@@ -86,15 +95,76 @@ export function useMarquee({ targets, onDrawGroup }: MarqueeOptions): MarqueeApi
       .filter((target) => rectContainsPoint(band, rectCenter(target.rect)))
       .map((target) => target.id)
 
-  const end = (event: React.PointerEvent<HTMLElement>): Press | null => {
+  const end = (event: PointerAt, surface: Element | null): Press | null => {
     const current = press.current
     if (!current || current.pointerId !== event.pointerId) return null
     press.current = null
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
+    unfollow.current?.()
+    unfollow.current = null
+    if (surface?.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId)
     useUiStore.getState().setMarquee(null)
     return current
+  }
+
+  const move = (event: PointerAt): void => {
+    const current = press.current
+    if (!current || current.pointerId !== event.pointerId) return
+    const band = bandFor(event, current.origin)
+    if (!current.dragging) {
+      if (Math.max(band.width, band.height) < MARQUEE_THRESHOLD) return
+      current.dragging = true
+    }
+    const ui = useUiStore.getState()
+    ui.setMarquee(band)
+    if (current.button === 0) {
+      ui.select([...new Set([...current.base, ...touched(band)])])
+    }
+  }
+
+  const release = (event: PointerAt, surface: Element | null): void => {
+    const current = end(event, surface)
+    if (!current) return
+    const band = bandFor(event, current.origin)
+    if (!current.dragging) {
+      if (current.button === 0 && !current.additive) useUiStore.getState().clearSelection()
+      return
+    }
+    if (current.button === 2) {
+      disarmSwallow.current?.()
+      disarmSwallow.current = swallowNextContextMenu()
+      onDrawGroup(band, inside(band))
+    } else {
+      useUiStore.getState().select([...new Set([...current.base, ...touched(band)])])
+    }
+  }
+
+  /**
+   * Follows the press on `window` (capture phase) rather than on the surface alone: the surface
+   * takes the pointer capture, but Chromium can drop a capture without a trace (measured in the
+   * Phase 12 e2e: a right-drag begun right after the page loaded got neither gotpointercapture
+   * nor lostpointercapture, and its pointerup landed on an icon, which opened the icon's menu).
+   * Every pointer event reaches `window` whatever it targets, so the band always finishes.
+   */
+  const follow = (pointerId: number, surface: Element): void => {
+    unfollow.current?.()
+    const mine = (e: PointerEvent): boolean => e.pointerId === pointerId
+    const onMove = (e: PointerEvent): void => {
+      if (mine(e)) move(e)
+    }
+    const onUp = (e: PointerEvent): void => {
+      if (mine(e)) release(e, surface)
+    }
+    const onCancel = (e: PointerEvent): void => {
+      if (mine(e)) end(e, surface)
+    }
+    window.addEventListener('pointermove', onMove, true)
+    window.addEventListener('pointerup', onUp, true)
+    window.addEventListener('pointercancel', onCancel, true)
+    unfollow.current = () => {
+      window.removeEventListener('pointermove', onMove, true)
+      window.removeEventListener('pointerup', onUp, true)
+      window.removeEventListener('pointercancel', onCancel, true)
+    }
   }
 
   return {
@@ -111,39 +181,7 @@ export function useMarquee({ targets, onDrawGroup }: MarqueeOptions): MarqueeApi
           base: additive ? [...useUiStore.getState().selection] : [],
           dragging: false
         }
-      },
-      onPointerMove(event) {
-        const current = press.current
-        if (!current || current.pointerId !== event.pointerId) return
-        const band = bandFor(event, current.origin)
-        if (!current.dragging) {
-          if (Math.max(band.width, band.height) < MARQUEE_THRESHOLD) return
-          current.dragging = true
-        }
-        const ui = useUiStore.getState()
-        ui.setMarquee(band)
-        if (current.button === 0) {
-          ui.select([...new Set([...current.base, ...touched(band)])])
-        }
-      },
-      onPointerUp(event) {
-        const current = end(event)
-        if (!current) return
-        const band = bandFor(event, current.origin)
-        if (!current.dragging) {
-          if (current.button === 0 && !current.additive) useUiStore.getState().clearSelection()
-          return
-        }
-        if (current.button === 2) {
-          disarmSwallow.current?.()
-          disarmSwallow.current = swallowNextContextMenu()
-          onDrawGroup(band, inside(band))
-        } else {
-          useUiStore.getState().select([...new Set([...current.base, ...touched(band)])])
-        }
-      },
-      onPointerCancel(event) {
-        end(event)
+        follow(event.pointerId, event.currentTarget)
       }
     }
   }

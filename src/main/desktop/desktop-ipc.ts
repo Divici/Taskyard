@@ -16,8 +16,11 @@ import { isVolumeOrShareRoot, MAX_NAME_LENGTH } from './file-names'
 export interface DesktopIpcTarget extends FileOps {
   list(): Promise<DesktopItem[]>
   rescan(): Promise<void>
-  /** Phase 5: every icon sent so far (desktop:icon events a late window missed). */
-  icons(): DesktopIcon[]
+  /**
+   * Phase 5: every icon sent so far (desktop:icon events a late window missed). Phase 12: answered
+   * once the icon pass is idle (capped), so the renderer can drop its skeleton tiles.
+   */
+  icons(): DesktopIcon[] | Promise<DesktopIcon[]>
 }
 
 /** Explorer drops at once; far above any real drop, small enough to bound the work. */

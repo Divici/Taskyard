@@ -11,6 +11,7 @@ import { createFakeBridge, installFakeBridge, type FakeBridge } from '../../../t
 import { ConfirmHost } from '../../feedback/ConfirmDialog'
 import { playChime } from './chime'
 import { TimerCompletion } from './TimerCompletion'
+import { RING_LABEL } from './ring-geometry'
 import { TimerTool } from './TimerTool'
 
 vi.mock('./chime', () => ({ playChime: vi.fn(async () => {}) }))
@@ -332,5 +333,16 @@ describe('TimerTool', () => {
 
     advance(60_000)
     expect(live).toHaveTextContent('Timer finished')
+  })
+  it('Phase 12: a long "Focus: <task>" label is cut short inside the ring, with the full text as its title', () => {
+    const text = 'Write the quarterly report for the board and send it to everyone involved'
+    setup({
+      tasks: [{ id: 't', text, done: false, order: 0, createdAt: 1 }],
+      timer: { linkedTaskId: 't' }
+    })
+    const label = screen.getByText(`Focus: ${text}`)
+    expect(label).toHaveClass('truncate')
+    expect(label).toHaveStyle({ maxWidth: `${RING_LABEL.maxWidth}px` })
+    expect(label).toHaveAttribute('title', `Focus: ${text}`)
   })
 })

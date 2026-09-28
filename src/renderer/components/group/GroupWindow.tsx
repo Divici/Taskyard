@@ -2,6 +2,8 @@ import { useDroppable } from '@dnd-kit/core'
 import { useMemo, useRef, useState } from 'react'
 import { GROUP_HEADER_HEIGHT, GROUP_MIN_SIZE } from '@shared/group-metrics'
 import type { DesktopItem, Group, Rect } from '@shared/schema'
+import { openMenuFromKey } from '../../lib/context-menu-key'
+import { useEntrance } from '../../lib/motion'
 import { sortItems } from '../../lib/sort-items'
 import { cn } from '../../lib/utils'
 import { useItemsStore } from '../../stores/items'
@@ -24,6 +26,8 @@ export interface GroupWindowProps {
   stackIndex?: number
   /** Quick-hide: faded out and inert (unless the group is excluded). */
   hidden?: boolean
+  /** Phase 12: its place in the launch entrance (reading order); undefined appears at once. */
+  revealIndex?: number
 }
 
 const groupRect = (group: Group): Rect => ({
@@ -43,8 +47,10 @@ export function GroupWindow({
   displayId,
   area,
   stackIndex,
-  hidden = false
+  hidden = false,
+  revealIndex
 }: GroupWindowProps): React.JSX.Element {
+  const reveal = useEntrance(revealIndex)
   const iconSize = useSettingsStore((state) => state.settings.iconSize)
   const showExtension = useSettingsStore((state) => state.settings.showExtensions)
   const snap = useSettingsStore((state) => state.settings.gridSnap)
@@ -126,17 +132,25 @@ export function GroupWindow({
         data-rolled-up={group.rolledUp || undefined}
         data-dragging={drag.dragging || resizing || itemsLeaving || undefined}
         data-drop-target={dropTarget || undefined}
+        data-reveal={reveal}
+        data-motion=""
+        // Shift+F10 / the menu key on the title bar's controls: this group's menu.
+        onKeyDown={(event) => openMenuFromKey(event)}
         // Any press on the group raises it (a no-op when it is already on top).
         onPointerDownCapture={() => layout().bringGroupToFront(displayId, group.id)}
-        style={{
-          left: rect.x,
-          top: rect.y,
-          width: rect.width,
-          height: group.rolledUp ? GROUP_HEADER_HEIGHT : rect.height,
-          zIndex: stackIndex ?? group.z
-        }}
+        style={
+          {
+            left: rect.x,
+            top: rect.y,
+            width: rect.width,
+            height: group.rolledUp ? GROUP_HEADER_HEIGHT : rect.height,
+            zIndex: stackIndex ?? group.z,
+            ...(revealIndex !== undefined && { '--i': revealIndex })
+          } as React.CSSProperties
+        }
         className={cn(
-          'glass absolute flex flex-col transition-[opacity,border-color] duration-[180ms] hover:border-accent-1/50',
+          // Transitions, the launch entrance and the hover lift: styles/motion.css.
+          'glass group-window absolute flex flex-col hover:border-accent-1/50',
           'data-[drop-target]:border-accent-1',
           hidden && 'pointer-events-none opacity-0'
         )}

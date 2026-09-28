@@ -16,6 +16,8 @@
     "test:win32": "tsx scripts/test-win32.ts",
     "test:e2e:win": "playwright test",
     "verify:zorder": "tsx scripts/verify-zorder.ts",
+    "verify:zorder:packaged": "tsx scripts/verify-zorder.ts --packaged",
+    "perf:fixture": "tsx scripts/perf-fixture.ts",
     "verify:koffi": "tsx scripts/verify-koffi.ts",
     "dist": "electron-vite build && electron-builder --win nsis"
   },

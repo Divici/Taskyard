@@ -150,6 +150,8 @@ describe('connectDesktop: icons (Phase 5)', () => {
       })
     )
     expect(bridge.desktop.icons).toHaveBeenCalledOnce()
+    // Phase 12: the skeleton tiles go once main has answered.
+    expect(stores.items.getState().iconsLoaded).toBe(true)
     expect(bridge.desktop.list.mock.invocationCallOrder[0]).toBeLessThan(
       bridge.desktop.icons.mock.invocationCallOrder[0]
     )
@@ -181,6 +183,8 @@ describe('connectDesktop: icons (Phase 5)', () => {
     )
     expect(stores.items.getState().byId['1:1']).toBeDefined()
     expect(stores.ui.getState().toasts).toEqual([])
+    // No skeletons forever: the generic icons show.
+    expect(stores.items.getState().iconsLoaded).toBe(true)
   })
 
   it('pulls no icons when the list failed or after disconnect', async () => {

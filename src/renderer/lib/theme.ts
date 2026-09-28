@@ -10,6 +10,7 @@ import { useSettingsStore, type SettingsState } from '../stores/settings'
 // - `data-reduced-transparency` on <html> (present/absent): Windows' "Transparency effects" is off
 //   (`nativeTheme.prefersReducedTransparency`); glass turns opaque and unblurred.
 // - `--blur` and `--glass-opacity` on <html>: Settings › glass blur (px, capped) and opacity (0–1).
+// - Phase 12: `reduce-motion` class (Settings › Reduce motion): motion.css strips all motion.
 // - Phase 11: `data-accent="cyan" | "blue" | "purple" | "white"` (tokens.css re-tints
 //   --accent-1/--accent-2 per theme) and `data-glow="on" | "off"` (off drops the outer bloom).
 
@@ -30,12 +31,14 @@ export interface ThemeAttributes {
   glassOpacity: number
   accent: SettingsFile['accent']
   glow: boolean
+  /** Phase 12: the motion kill switch (`reduce-motion` class on the root, see motion.css). */
+  reduceMotion: boolean
 }
 
 /** The settings the root attributes are built from. */
 export type ThemeSettings = Pick<
   SettingsFile,
-  'theme' | 'glassBlur' | 'glassOpacity' | 'accent' | 'glow'
+  'theme' | 'glassBlur' | 'glassOpacity' | 'accent' | 'glow' | 'reduceMotion'
 >
 
 /** Chromium's own view of the OS theme, before main has answered (dark when unknown). */
@@ -69,7 +72,8 @@ export function themeAttributes(
     blurPx: Math.min(Math.max(settings.glassBlur, 0), MAX_BLUR_PX),
     glassOpacity: Math.min(Math.max(settings.glassOpacity, 0), 100) / 100,
     accent: settings.accent,
-    glow: settings.glow
+    glow: settings.glow,
+    reduceMotion: settings.reduceMotion
   }
 }
 
@@ -80,6 +84,8 @@ export function applyTheme(root: HTMLElement, attrs: ThemeAttributes): void {
   root.style.setProperty('--glass-opacity', String(attrs.glassOpacity))
   root.dataset.accent = attrs.accent
   root.dataset.glow = attrs.glow ? 'on' : 'off'
+  // The design-pattern kill switch: one class collapses every transition and entrance.
+  root.classList.toggle('reduce-motion', attrs.reduceMotion)
   // Native form controls and scrollbars follow the resolved theme too.
   root.style.colorScheme = attrs.theme
 }
