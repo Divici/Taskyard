@@ -151,7 +151,9 @@ export function createFileOps(deps: FileOpsDeps): FileOps {
         return failure('hash-mismatch', `the copy of ${from} did not match; nothing was moved`)
       }
       deps.journal.advance(token, 'copied', { toId: await fileIdOf(partial) })
-      deps.win32.setHidden(partial, false)
+      if (!deps.win32.setHidden(partial, false)) {
+        throw new Error(`could not clear the hidden attribute on ${partial}`)
+      }
       deps.win32.moveFile(partial, to)
     } catch (error) {
       await rm(partial, { recursive: true, force: true }).catch(() => {})

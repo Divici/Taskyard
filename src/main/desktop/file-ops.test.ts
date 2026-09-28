@@ -312,6 +312,26 @@ describe('moveToDesktop', () => {
     expect(advanced).toEqual([[op.token, 'undone']])
   })
 
+  it('cross volume: a copy that cannot be unhidden fails the move, keeps the source and leaves nothing on the desktop', async () => {
+    const from = join(h.elsewhere, 'photo.png')
+    writeFileSync(from, 'pixels')
+    ops = build({ sameVolume: async () => false })
+    vi.spyOn(h.win32, 'setHidden').mockImplementation((_path, hidden) => hidden !== false)
+
+    const { moves } = await ops.moveToDesktop([from])
+
+    expect(moves[0]).toMatchObject({ ok: false, from })
+    expect(moves[0]).not.toMatchObject({ ok: true })
+    expect(readFileSync(from, 'utf8')).toBe('pixels')
+    expect(readdirSync(h.desktop)).toEqual([])
+    const [op] = journal.list()
+    expect(op).toMatchObject({ state: 'undone', from })
+    expect(advanced).toEqual([
+      [op.token, 'copied'],
+      [op.token, 'undone']
+    ])
+  })
+
   it('cross volume: moves a whole folder (tree hash)', async () => {
     const from = join(h.elsewhere, 'Album')
     mkdirSync(join(from, 'sub'), { recursive: true })
@@ -494,6 +514,22 @@ describe('undoMove', () => {
     expect(readFileSync(from, 'utf8')).toBe('pixels')
     expect(readdirSync(h.desktop)).toEqual([])
     expect(readdirSync(h.elsewhere)).toEqual(['photo.png'])
+  })
+
+  it('cross volume: a copy that cannot be unhidden fails the undo and leaves the moved file in place', async () => {
+    const from = join(h.elsewhere, 'photo.png')
+    writeFileSync(from, 'pixels')
+    ops = build({ sameVolume: async () => false })
+    const { moves } = await ops.moveToDesktop([from])
+    const { token } = moves[0] as { token: string }
+    vi.spyOn(h.win32, 'setHidden').mockImplementation((_path, hidden) => hidden !== false)
+
+    const result = await ops.undoMove(token)
+
+    expect(result).toMatchObject({ ok: false })
+    expect(existsSync(from)).toBe(false)
+    expect(readFileSync(join(h.desktop, 'photo.png'), 'utf8')).toBe('pixels')
+    expect(readdirSync(h.desktop)).toEqual(['photo.png'])
   })
 
   it('refuses when the original place is taken again, or the token is unknown or not done', async () => {
