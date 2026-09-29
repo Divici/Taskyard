@@ -9,9 +9,16 @@ import {
   placedToItems,
   replaceSubmenus,
   resolveLabels,
+  invokesByVerb,
+  returnsFocus,
   runInvoke
 } from './shell-menu-shape'
-import { resolveCommand, TASKYARD_COMMAND_BASE, type ShellMenuItem } from './shell-menu-api'
+import {
+  resolveCommand,
+  TASKYARD_COMMAND_BASE,
+  type ShellMenuItem,
+  type ShowMenuOutcome
+} from './shell-menu-api'
 
 function item(
   id: number,
@@ -312,5 +319,52 @@ describe('invokeOutcome / runInvoke (a failed invoke after the user chose)', () 
       message: 'IContextMenu::InvokeCommand failed: HRESULT 0x80070005'
     })
     expect(() => runInvoke(failing)).toThrow(/0x80070005/)
+  })
+})
+
+describe('returnsFocus (Phase 3: who gets the keyboard after the menu closes)', () => {
+  const invoked = (verb: string | null): ShowMenuOutcome => ({
+    kind: 'invoked',
+    verb,
+    label: 'x',
+    path: []
+  })
+
+  it('gives it back to Taskyard when nothing of Windows’ opened: dismissed, Taskyard, intercepted, failed', () => {
+    expect(returnsFocus({ kind: 'dismissed' })).toBe(true)
+    expect(returnsFocus({ kind: 'taskyard', id: 'taskyard.new-group' })).toBe(true)
+    expect(returnsFocus({ kind: 'intercepted', verb: 'refresh', label: 'Refresh', path: [] })).toBe(
+      true
+    )
+    expect(
+      returnsFocus({ kind: 'invoke-failed', verb: 'paste', label: 'Paste', path: [], message: 'x' })
+    ).toBe(true)
+  })
+
+  it('and after New ▸ Folder / a ShellNew file (inline rename follows) or a copy or cut', () => {
+    for (const verb of ['NewFolder', '.txt', '.docx', 'copy', 'cut', 'copyaspath']) {
+      expect(returnsFocus(invoked(verb))).toBe(true)
+    }
+  })
+
+  it('never after a command that may open a window of its own (Settings, a wizard, a dialog)', () => {
+    // Paste run in the helper hands the foreground on through its copy window (measured).
+    for (const verb of [null, 'Display', 'Personalize', 'NewLink', 'paste', 'undo', 'properties']) {
+      expect(returnsFocus(invoked(verb))).toBe(false)
+    }
+  })
+})
+
+describe('invokesByVerb (DefView’s own background commands on a windowless view)', () => {
+  it('runs Paste and Paste shortcut of a background menu by verb: by id the windowless view ignores them', () => {
+    expect(invokesByVerb('paste', true)).toBe(true)
+    expect(invokesByVerb('pastelink', true)).toBe(true)
+  })
+
+  it('keeps everything else — and every file-menu command — on its command id', () => {
+    expect(invokesByVerb('NewFolder', true)).toBe(false)
+    expect(invokesByVerb('Display', true)).toBe(false)
+    expect(invokesByVerb(null, true)).toBe(false)
+    expect(invokesByVerb('paste', false)).toBe(false)
   })
 })

@@ -116,6 +116,15 @@ export interface DesktopWindowManager extends DisplaySource, IpcEventEmitter {
   pauseIdle(paused: boolean, source?: IdlePauseSource): void
   /** Restarts the idle timer (Phase 9: pointer or keyboard activity during Peek). */
   noteActivity(): void
+  /**
+   * Phase 3: a native menu of the shell-menu helper is open (or about to open). Until the
+   * returned release runs, foreground changes never end a Peek — the helper's owner window holds
+   * the foreground for the menu, and a command it runs may pass it on (Paste does) before the
+   * helper gives it back — and the idle timer waits. When the last hold is released, the window
+   * that has the foreground then is judged as usual (another app's ends the Peek: e.g. the user
+   * dismissed the menu by clicking it). Never starts a Peek. Releasing twice is harmless.
+   */
+  holdForMenu(): () => void
   /** Shows and re-seats (or re-raises while peeking) every ready window. */
   reseatAll(): void
   windows(): readonly DesktopWindow[]
@@ -136,6 +145,8 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
 
   const byDisplay = new Map<number, DesktopWindow>()
   const holds = new Set<PeekHold>()
+  /** Phase 3: open native menus (holdForMenu): no foreground change ends a Peek meanwhile. */
+  const menuHolds = new Set<symbol>()
   let peeking = false
   let quitting = false
   /** Pausers of the idle timer; owned here next to the holds, cleared when Peek ends. */
@@ -312,7 +323,7 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
 
   const scheduleIdle = (): void => {
     clearIdle()
-    if (!peeking || holds.size > 0 || idlePausers.size > 0) return
+    if (!peeking || holds.size > 0 || idlePausers.size > 0 || menuHolds.size > 0) return
     idleTimer = setTimeout(() => {
       idleTimer = null
       log.info(`peek: idle for ${idleMs} ms, unpeeking`)
@@ -421,13 +432,14 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
 
   /**
    * Phase 9: another app came to the front (a taskbar button, Alt+Tab) — the user has left the
-   * Peek, so it ends. Our own windows and the shell window (Win+D) do not end it, nor (Phase 12)
+   * Peek, so it ends. Our own windows and the shell window (Win+D) do not end it, nothing does
+   * while a native menu is open (Phase 3, holdForMenu: judged when it closes), nor (Phase 12)
    * the tray (the taskbar, its overflow flyout, or our own tray icon window while the tray menu
    * is open): using Taskyard's tray icon focuses them first, and ending the Peek there would make
    * the tray's Peek toggle turn it straight back on.
    */
   const endPeekOnForeignForeground = (hwnd: Hwnd | null): void => {
-    if (!peeking || hwnd === null || hwnd === api.getShellWindow()) return
+    if (!peeking || menuHolds.size > 0 || hwnd === null || hwnd === api.getShellWindow()) return
     if (all().some((desktop) => desktop.hwnd === hwnd)) return
     if (api.isTrayWindow(hwnd)) return
     log.info('peek: another app took the foreground, unpeeking')
@@ -579,6 +591,17 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
       if (paused) idlePausers.add(source)
       else idlePausers.delete(source)
       scheduleIdle()
+    },
+    holdForMenu() {
+      const hold = Symbol('menu')
+      menuHolds.add(hold)
+      clearIdle()
+      return () => {
+        if (!menuHolds.delete(hold) || menuHolds.size > 0) return
+        scheduleIdle()
+        // The menu closed: whoever has the foreground now is judged (it was not, meanwhile).
+        endPeekOnForeignForeground(api.foregroundWindow())
+      }
     },
     noteActivity() {
       if (peeking) scheduleIdle()

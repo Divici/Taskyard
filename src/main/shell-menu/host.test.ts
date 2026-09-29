@@ -168,6 +168,68 @@ describe('createShellMenuHost', () => {
     expect(children[0].last()).toMatchObject({ type: 'enumerate', pasteState: true })
   })
 
+  describe('cancelShows (Phase 3: a new right-click replaces the menu before it)', () => {
+    it('rejects show requests still queued as cancelled, and posts none of them', async () => {
+      const { host, children } = setup()
+      const first = host.show(REQUEST)
+      const second = host.show({ ...REQUEST, point: { x: 1, y: 1 } })
+      host.cancelShows()
+      await expect(first).rejects.toMatchObject({ code: 'cancelled' })
+      await expect(second).rejects.toMatchObject({ code: 'cancelled' })
+      children[0].ready()
+      await flush()
+      expect(children[0].posted).toEqual([])
+    })
+
+    it('dismisses the menu on screen (WM_CANCELMODE to its owner); its outcome still arrives', async () => {
+      const cancelMenu = vi.fn()
+      const { host, children } = setup({ cancelMenu })
+      const shown = host.show(REQUEST)
+      children[0].ready()
+      await flush()
+      const { id } = children[0].last()
+      children[0].reply({ type: 'showing', id, ownerHwnd: '77' })
+      host.cancelShows()
+      expect(cancelMenu).toHaveBeenCalledWith(77n)
+      children[0].reply({
+        type: 'result',
+        id,
+        result: { kind: 'show', outcome: { kind: 'dismissed' } }
+      })
+      await expect(shown).resolves.toEqual({ kind: 'dismissed' })
+    })
+
+    it('dismisses a menu the helper was still building as soon as it shows', async () => {
+      const cancelMenu = vi.fn()
+      const { host, children } = setup({ cancelMenu })
+      void host.show(REQUEST)
+      children[0].ready()
+      await flush()
+      host.cancelShows()
+      expect(cancelMenu).not.toHaveBeenCalled()
+      children[0].reply({ type: 'showing', id: children[0].last().id, ownerHwnd: '88' })
+      expect(cancelMenu).toHaveBeenCalledWith(88n)
+    })
+
+    it('leaves enumerate and invoke requests alone', async () => {
+      const { host, children } = setup()
+      const listed = host.enumerate({ kind: 'desktop-background' })
+      const invoked = host.invokeVerb({ kind: 'items', paths: ['C:\\t\\a.txt'] }, 'open')
+      host.cancelShows()
+      children[0].ready()
+      await flush()
+      children[0].reply({
+        type: 'result',
+        id: children[0].last().id,
+        result: { kind: 'enumerate', items: [] }
+      })
+      await expect(listed).resolves.toEqual([])
+      await flush()
+      children[0].reply({ type: 'result', id: children[0].last().id, result: { kind: 'invoke' } })
+      await expect(invoked).resolves.toBeUndefined()
+    })
+  })
+
   it('runs requests one at a time, in order', async () => {
     const { host, children } = setup()
     const first = host.enumerate({ kind: 'desktop-background' })

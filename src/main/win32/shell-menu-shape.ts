@@ -1,3 +1,4 @@
+import { isShellNewVerb } from '@shared/shell-menu'
 import { ComError } from './com'
 import {
   placeTaskyardItems,
@@ -20,6 +21,13 @@ import {
  * fake applies them to its scripted tree; the koffi implementation applies the same rules to the
  * real HMENU (and resolves commands with the same `resolveCommand`).
  */
+
+/**
+ * Why `show` fails before any menu appears when the owner window cannot take the foreground (a
+ * menu without it would not close on an outside click). Main then shows Taskyard's own menu.
+ */
+export const FOREGROUND_REFUSED =
+  'SetForegroundWindow failed: the shell-menu helper could not take the foreground'
 
 /** HRESULT_FROM_WIN32(ERROR_CANCELLED): the user cancelled a UAC prompt or a dialog. */
 export const HRESULT_ERROR_CANCELLED = 0x800704c7 | 0
@@ -229,4 +237,39 @@ export function resolveShown(
 ): CommandResolution {
   const { background, ...rest } = context
   return resolveCommand(command, { ...rest, guardViewState: background })
+}
+
+/**
+ * Invoked verbs after which Taskyard takes the keyboard back: nothing of Windows' opens, and the
+ * user goes on in Taskyard (inline rename of a new folder or ShellNew file; Ctrl+V after a copy).
+ * Not Paste: run in the helper, its copy window takes the foreground and, when it closes, Windows
+ * hands it to the next app (measured) — the desktop menu's Paste is intercepted instead.
+ */
+const FOCUS_RETURN_VERBS = new Set(['NewFolder', 'copy', 'cut', 'copyaspath'])
+
+/**
+ * Phase 3: whether the foreground goes back to the Taskyard window once the menu closed with
+ * `outcome` (the helper's hidden owner window holds it until then). Yes when nothing of Windows'
+ * opened — dismissed, a Taskyard item, an intercepted verb, a failed invoke — and after the verbs
+ * above. Never after anything that may open a window of its own (Settings, a wizard, a dialog, a
+ * copy engine's conflict prompt): it must come to the front, not behind the desktop.
+ */
+export function returnsFocus(outcome: ShowMenuOutcome): boolean {
+  if (outcome.kind !== 'invoked') return true
+  return (
+    outcome.verb !== null && (FOCUS_RETURN_VERBS.has(outcome.verb) || isShellNewVerb(outcome.verb))
+  )
+}
+
+/**
+ * DefView's own background commands that run by verb: chosen by command id, the windowless shell
+ * view hands them to its (non-existent) view window and nothing happens — measured on this
+ * machine for Paste (and Undo). By verb, the folder's own menu runs Paste and Paste shortcut. (The
+ * Desktop menu intercepts Paste — see backgroundMenuPolicy — so this covers what is not.)
+ */
+const BACKGROUND_VERB_COMMANDS = new Set(['paste', 'pastelink'])
+
+/** Whether the chosen shell command is invoked by its verb rather than its command id. */
+export function invokesByVerb(verb: string | null, background: boolean): boolean {
+  return background && verb !== null && BACKGROUND_VERB_COMMANDS.has(verb)
 }

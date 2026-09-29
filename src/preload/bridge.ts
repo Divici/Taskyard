@@ -2,6 +2,7 @@ import {
   IPC,
   isEventChannel,
   SETTINGS_IPC,
+  SHELL_MENU_IPC,
   TIMER_IPC,
   type IpcEventName,
   type IpcEvents
@@ -97,6 +98,11 @@ export function createTaskyardApi(
 
     timer: {
       notify: (request) => invoke(TIMER_IPC.notify, request)
+    },
+
+    shellMenu: {
+      show: (request) => invoke(SHELL_MENU_IPC.show, request),
+      available: () => invoke(SHELL_MENU_IPC.available)
     },
 
     on<E extends IpcEventName>(event: E, listener: (payload: IpcEvents[E]) => void): () => void {

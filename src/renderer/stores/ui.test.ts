@@ -166,6 +166,13 @@ describe('ui store — canvas state', () => {
     expect(ui().quickHidden).toBe(false)
   })
 
+  it('native menus are off until main says they can show (Phase 3)', () => {
+    const store = createUiStore()
+    expect(store.getState().nativeMenus).toBe(false)
+    store.getState().setNativeMenus(true)
+    expect(store.getState().nativeMenus).toBe(true)
+  })
+
   it('confirm() resolves with the user’s answer and closes the request', async () => {
     const store = createUiStore()
 

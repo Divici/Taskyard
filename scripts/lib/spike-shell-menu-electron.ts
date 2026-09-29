@@ -138,7 +138,8 @@ async function main(): Promise<void> {
         const ok = bindings.AllowSetForegroundWindow(pid)
         allowed.push(ok)
         return ok
-      }
+      },
+      cancelMenu: (owner) => bindings.PostMessageW(owner, 0x001f, 0, 0)
     },
     log
   })

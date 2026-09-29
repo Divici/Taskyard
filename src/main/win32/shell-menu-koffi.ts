@@ -26,11 +26,14 @@ import {
   type ShowMenuRequest
 } from './shell-menu-api'
 import {
+  FOREGROUND_REFUSED,
   invokeOutcome,
+  invokesByVerb,
   matchesSubmenu,
   placeTaskyardMenus,
   resolveLabels,
   resolveShown,
+  returnsFocus,
   runInvoke,
   type PlacedReplacement
 } from './shell-menu-shape'
@@ -188,6 +191,7 @@ export function createKoffiShellMenuApi(
     InsertMenuItemW,
     TrackPopupMenuEx,
     SetForegroundWindow,
+    GetForegroundWindow,
     PostMessageW,
     DefWindowProcW,
     CreateWindowExW,
@@ -839,6 +843,31 @@ export function createKoffiShellMenuApi(
     )
   }
 
+  /** InvokeCommand with a verb string (throws on failure; callers decide what a cancel means). */
+  const invokeByVerb = (built: BuiltMenu, verb: string): void => {
+    const info = {
+      cbSize: koffi.sizeof(structs.CMINVOKECOMMANDINFOEX_VERB),
+      fMask: CMIC_MASK_UNICODE,
+      hwnd: built.owner,
+      lpVerb: verb,
+      lpParameters: null,
+      lpDirectory: null,
+      nShow: SW_SHOWNORMAL,
+      dwHotKey: 0,
+      hIcon: null,
+      lpTitle: null,
+      lpVerbW: verb,
+      lpParametersW: null,
+      lpDirectoryW: null,
+      lpTitleW: null,
+      ptInvoke: { x: 0, y: 0 }
+    }
+    checkHr(
+      com.call(built.cm, CONTEXT_MENU.InvokeCommand, proto.invokeByVerb, info),
+      `IContextMenu::InvokeCommand(${verb})`
+    )
+  }
+
   const operation = <T>(run: (scope: Scope) => T): T => {
     const scope = new Scope((error) => warn('shell-menu: cleanup failed', error))
     try {
@@ -886,8 +915,11 @@ export function createKoffiShellMenuApi(
         tracking = built
         try {
           // The foreground was granted by main (AllowSetForegroundWindow); without it the menu
-          // would not close on an outside click (KB135788).
+          // would not close on an outside click (KB135788). Refused (the grant expired, another
+          // app holds the foreground lock): no menu at all — an error before `showing`, so main
+          // shows Taskyard's own menu instead of one the user could not dismiss.
           SetForegroundWindow(built.owner)
+          if (GetForegroundWindow() !== built.owner) throw new Error(FOREGROUND_REFUSED)
           hooks.onShowing({ ownerHwnd: built.owner })
           command = TrackPopupMenuEx(
             built.menu,
@@ -909,41 +941,37 @@ export function createKoffiShellMenuApi(
           interceptSubmenus: request.interceptSubmenus,
           background: request.target.kind !== 'items'
         })
-        if (resolution.kind !== 'invoke') return resolution
         // A failure here is an outcome (the user already chose), a cancel counts as invoked.
-        return invokeOutcome(resolution, () => {
-          invokeById(built, resolution.offset, request.point)
-          flushClipboardAfter(resolution.verb)
-        })
+        const outcome =
+          resolution.kind !== 'invoke'
+            ? resolution
+            : invokeOutcome(resolution, () => {
+                const { verb } = resolution
+                // DefView's own Paste does nothing by id on a windowless view; by verb it runs.
+                if (verb !== null && invokesByVerb(verb, request.target.kind !== 'items')) {
+                  invokeByVerb(built, verb)
+                } else {
+                  invokeById(built, resolution.offset, request.point)
+                }
+                flushClipboardAfter(verb)
+              })
+        // Phase 3: nothing of Windows' opened and the hidden owner window still has the
+        // foreground: the keyboard goes back to Taskyard's window (inline rename, Ctrl+V…).
+        if (
+          request.returnFocusTo !== undefined &&
+          returnsFocus(outcome) &&
+          GetForegroundWindow() === built.owner
+        ) {
+          SetForegroundWindow(BigInt(request.returnFocusTo))
+        }
+        return outcome
       })
     },
 
     invokeVerb(target, verb) {
       operation((scope) => {
         const built = build(scope, target, queryFlags({ extendedVerbs: false, forInvoke: true }))
-        const info = {
-          cbSize: koffi.sizeof(structs.CMINVOKECOMMANDINFOEX_VERB),
-          fMask: CMIC_MASK_UNICODE,
-          hwnd: built.owner,
-          lpVerb: verb,
-          lpParameters: null,
-          lpDirectory: null,
-          nShow: SW_SHOWNORMAL,
-          dwHotKey: 0,
-          hIcon: null,
-          lpTitle: null,
-          lpVerbW: verb,
-          lpParametersW: null,
-          lpDirectoryW: null,
-          lpTitleW: null,
-          ptInvoke: { x: 0, y: 0 }
-        }
-        runInvoke(() =>
-          checkHr(
-            com.call(built.cm, CONTEXT_MENU.InvokeCommand, proto.invokeByVerb, info),
-            `IContextMenu::InvokeCommand(${verb})`
-          )
-        )
+        runInvoke(() => invokeByVerb(built, verb))
         flushClipboardAfter(verb)
       })
     },

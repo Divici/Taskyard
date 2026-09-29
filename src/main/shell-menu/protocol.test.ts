@@ -49,12 +49,20 @@ const showRequest: HelperRequest = {
       ]
     },
     { match: { label: 'Sort by' }, label: 'Sort by', items: [] }
-  ]
+  ],
+  returnFocusTo: '4660'
 }
 
 describe('parseHelperRequest (main → helper)', () => {
   it('accepts show, enumerate and invoke requests for every target kind', () => {
     expect(parseHelperRequest(showRequest)).toEqual(showRequest)
+    // Phase 3: the window to give the foreground back to is optional.
+    const { returnFocusTo: _unused, ...withoutFocus } = showRequest as Extract<
+      HelperRequest,
+      { type: 'show' }
+    >
+    void _unused
+    expect(parseHelperRequest(withoutFocus)).toEqual(withoutFocus)
     const enumerate: HelperRequest = {
       type: 'enumerate',
       id: 1,
@@ -86,6 +94,8 @@ describe('parseHelperRequest (main → helper)', () => {
       { ...showRequest, taskyardItems: [{ kind: 'item', id: '', label: 'x' }] },
       { type: 'invoke', id: 3, target: { kind: 'desktop-background' }, verb: '' },
       { ...showRequest, replaceSubmenus: [{ match: {}, items: [] }] },
+      { ...showRequest, returnFocusTo: '0x1234' },
+      { ...showRequest, returnFocusTo: '' },
       { ...showRequest, replaceSubmenus: [{ match: { verb: '' }, items: [] }] },
       {
         ...showRequest,

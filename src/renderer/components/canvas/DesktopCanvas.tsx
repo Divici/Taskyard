@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { clampRect, localWorkArea } from '@shared/geometry'
-import { looseCell, visibleGroupRect } from '@shared/group-metrics'
+import { looseCell, visibleGroupRect, type IconSize } from '@shared/group-metrics'
 import type { DisplayInfo } from '@shared/ipc'
 import type { Group, Point } from '@shared/schema'
 import {
@@ -11,12 +11,15 @@ import {
   openSettingsPage,
   quitApp,
   refreshDesktop,
-  sortLooseIcons
+  setIconSize,
+  sortLooseIcons,
+  toggleGridSnap
 } from '../../lib/canvas-actions'
 import { openMenuFromKey } from '../../lib/context-menu-key'
 import { LAUNCH_REVEAL_WINDOW_MS, revealOrder } from '../../lib/motion'
 import { toggleQuickHide } from '../../lib/quick-hide'
 import { isPrimaryDisplay } from '../../lib/reconcile-sync'
+import { showCanvasShellMenu, type CanvasMenuActions } from '../../lib/shell-menu'
 import { useItemsStore } from '../../stores/items'
 import { useLayoutStore } from '../../stores/layout'
 import { useSettingsStore } from '../../stores/settings'
@@ -74,6 +77,7 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
   const inspectorOpen = useUiStore((state) => state.inspectorOpen)
   const quickHidden = useUiStore((state) => state.quickHidden)
   const hintDismissed = useUiStore((state) => state.hintDismissed)
+  const nativeMenus = useUiStore((state) => state.nativeMenus)
   const toolsShown = settings.toolsEnabled && (entry?.tools.visible ?? false) // Phase 10: the menu's wording
 
   const groups = entry?.groups ?? NO_GROUPS
@@ -135,6 +139,26 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
   // Phase 8: files dropped from Explorer (native events; dnd-kit handles our own icons).
   const externalDrop = useExternalDrop({ displayId, area, cell })
 
+  // Native menus (Phase 3): what the real desktop menu's Taskyard items do on this display. The
+  // menu may stay open a while, so the settings are read when an item runs.
+  const iconSize = (): IconSize => useSettingsStore.getState().settings.iconSize
+  const menuActions: CanvasMenuActions = {
+    newGroup: (point) => newGroupAt(displayId, point, area, grid),
+    autoOrganize: () => void confirmAutoOrganize(displayId, area, iconSize()),
+    sortLoose: (key) => sortLooseIcons(displayId, area, iconSize(), key),
+    toggleTools: () => toggleToolsOn(displayId),
+    refresh: refreshDesktop,
+    openSettings: () => useUiStore.getState().setInspectorOpen(true),
+    quit: quitApp,
+    setIconSize,
+    toggleGridSnap,
+    toggleQuickHide
+  }
+  const onNativeMenu = nativeMenus
+    ? ({ point, shiftKey }: { point: Point; shiftKey: boolean }) =>
+        showCanvasShellMenu({ displayId, point, shiftKey, toolsShown }, menuActions)
+    : undefined
+
   return (
     <div data-desktop-canvas={displayId} className="absolute inset-0" {...externalDrop}>
       <DndProvider displayId={displayId} area={area} cell={cell}>
@@ -148,6 +172,7 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
           onQuit={quitApp}
           toolsShown={toolsShown}
           onToggleTools={() => toggleToolsOn(displayId)}
+          onNativeMenu={onNativeMenu}
         >
           <div
             data-canvas-surface=""

@@ -14,7 +14,13 @@ export const ENV = {
    * Semicolon list replacing the scanned desktop folders (first = the user Desktop, where moves
    * land). Tests and e2e runs point it at temp folders so nothing touches the real desktop.
    */
-  desktopDirs: 'TASKYARD_DESKTOP_DIRS'
+  desktopDirs: 'TASKYARD_DESKTOP_DIRS',
+  /**
+   * Native menus (Phase 3): `1` = the scripted fake shell-menu helper (e2e; the script is set
+   * from the test through the main process's global, see shell-menu/scripted-shell-menu.ts);
+   * `0` = native menus off (Taskyard's own menus). Unset: the real helper with real Win32.
+   */
+  fakeShellMenu: 'TASKYARD_FAKE_SHELL_MENU'
 } as const
 
 type Env = Partial<Record<string, string | undefined>>
@@ -43,4 +49,14 @@ export function applyUserDataOverride(
 export function resolveLogLevel(raw: string | undefined): LogLevel {
   const candidate = raw?.trim().toLowerCase()
   return LOG_LEVELS.find((level) => level === candidate) ?? 'info'
+}
+
+export type ShellMenuMode = 'real' | 'fake' | 'off'
+
+/** Which shell-menu helper this session runs, from TASKYARD_FAKE_SHELL_MENU and the Win32 mode. */
+export function shellMenuMode(env: Env, win32: 'koffi' | 'fake' | 'unavailable'): ShellMenuMode {
+  const raw = env[ENV.fakeShellMenu]?.trim()
+  if (raw === '1') return 'fake'
+  if (raw === '0') return 'off'
+  return win32 === 'koffi' ? 'real' : 'off'
 }

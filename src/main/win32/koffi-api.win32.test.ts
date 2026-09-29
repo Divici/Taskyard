@@ -293,6 +293,19 @@ describe.runIf(realWin32TestsEnabled())('createKoffiWin32Api (real Win32)', () =
     expect(() => unsubscribe()).not.toThrow()
   })
 
+  it('Phase 3: posts WM_CANCELMODE only to live windows, and reads the foreground window', () => {
+    const hwnd = createProbeWindow()
+    try {
+      // Nothing is tracking a menu here: the post is queued and ignored.
+      expect(api.cancelMenu(hwnd)).toBe(true)
+    } finally {
+      destroyWindow(hwnd)
+    }
+    expect(api.cancelMenu(hwnd)).toBe(false)
+    const foreground = api.foregroundWindow()
+    expect(foreground === null || typeof foreground === 'bigint').toBe(true)
+  })
+
   it('reads file attributes through \\\\?\\ paths, including paths past MAX_PATH', () => {
     const deepDir = join(tmp, 'a'.repeat(100), 'b'.repeat(100), 'c'.repeat(100))
     mkdirSync(deepDir, { recursive: true })

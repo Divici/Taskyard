@@ -18,13 +18,14 @@ export interface AppShellMenuDeps {
   }
   /** Absolute path of the helper bundle (`join(__dirname, SHELL_MENU_HELPER_FILE)`). */
   helperFile: string
-  win32: Pick<Win32Api, 'allowSetForegroundWindow'>
+  win32: Pick<Win32Api, 'allowSetForegroundWindow' | 'cancelMenu'>
   log: ShellMenuHostDeps['log']
 }
 
 /**
- * The app's shell-menu host: forks the helper as an Electron utility process and lets it take
- * the foreground (main has it right after the user's right-click) before each menu.
+ * The app's shell-menu host: forks the helper as an Electron utility process, lets it take the
+ * foreground (main has it right after the user's right-click) before each menu, and dismisses a
+ * menu a newer right-click replaces.
  */
 export function createAppShellMenu(deps: AppShellMenuDeps): ShellMenuHost {
   const { log } = deps
@@ -37,6 +38,10 @@ export function createAppShellMenu(deps: AppShellMenuDeps): ShellMenuHost {
           `shell-menu: AllowSetForegroundWindow(${pid}) was refused; the menu may not take the foreground`
         )
       }
+    },
+    // A new right-click while a menu is open replaces it (host.cancelShows).
+    cancelMenu: (owner) => {
+      if (!deps.win32.cancelMenu(owner)) log.warn('shell-menu: could not dismiss the open menu')
     },
     log
   })

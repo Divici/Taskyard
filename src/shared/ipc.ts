@@ -1,7 +1,8 @@
 // The typed contract between main, the sandboxed preload and the renderer.
 // Types and plain constants only: the preload bundles this file, so it must never import zod
 // (inbound validation lives in src/main/ipc/handlers.ts).
-import type { DesktopItem, LayoutFile, Rect, SettingsFile, TasksFile } from './schema'
+import type { DesktopItem, LayoutFile, Point, Rect, SettingsFile, TasksFile } from './schema'
+import type { CanvasMenuState } from './shell-menu'
 import type { PxRect, WallpaperPosition } from './wallpaper-geometry'
 
 // ---------------------------------------------------------------------------------------------
@@ -97,6 +98,21 @@ export interface DesktopChange {
   /** File ids no longer on the desktop. */
   removed: string[]
   changed: DesktopItem[]
+  /**
+   * Phase 3: some of `added` came from the native Desktop menu's New ▸ or Paste — the window of
+   * `displayId` puts them at the right-click point (and opens inline rename on `renameId`).
+   */
+  placeAt?: NewItemPlacement
+}
+
+/** Phase 3: where new Desktop items made through the native menu go. */
+export interface NewItemPlacement {
+  displayId: number
+  /** The right-click point, in that display window's CSS pixels. */
+  point: Point
+  ids: string[]
+  /** The new folder or file to rename inline (New ▸), or null (Paste, New ▸ Shortcut). */
+  renameId: string | null
 }
 
 export interface DesktopRenamed {
@@ -311,7 +327,7 @@ export const IPC = {
 /** `app:openExternal` opens only these URL schemes; main enforces it. */
 export const EXTERNAL_URL_PROTOCOLS = ['ms-settings:', 'https:'] as const
 
-export interface IpcRequests extends TimerRequests, SettingsRequests {
+export interface IpcRequests extends TimerRequests, SettingsRequests, ShellMenuRequests {
   'storage:load': { args: [store: StoreName]; result: StoreSnapshot }
   'storage:save': {
     args: [store: StoreName, request: SaveRequest<StoreFiles[StoreName]>]
@@ -418,4 +434,62 @@ export interface SettingsRequests {
   /** Opens the data folder in Explorer; false when Windows could not. */
   'app:openDataFolder': { args: []; result: boolean }
   'app:info': { args: []; result: AppInfo }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Native menus, Phase 3: the Desktop background menu (src/main/shell-menu/shell-menu-ipc.ts)
+
+export const SHELL_MENU_IPC = {
+  show: 'shellMenu:show',
+  available: 'shellMenu:available'
+} as const
+
+/**
+ * A right-click (or Shift+F10 / the menu key) on the empty desktop of the calling window. The
+ * renderer never names a path: main resolves what the menu is for.
+ */
+export interface ShellMenuShowRequest {
+  kind: 'background'
+  /** The calling window's display (checked against the sender). */
+  displayId: number
+  /** Where the menu opens, in the window's CSS pixels (the event's clientX / clientY). */
+  point: Point
+  /** Shift was held: Windows' extended verbs. */
+  extendedVerbs: boolean
+  /** What Taskyard's items tick and say. */
+  state: CanvasMenuState
+}
+
+/** Why Taskyard's own menu opens instead of the native one. */
+export type ShellMenuFallbackReason =
+  /** No helper in this mode (fake Win32, native menus off). */
+  | 'unavailable'
+  | 'timeout'
+  | 'helper-exited'
+  | 'helper-failed'
+  /** The helper refused before showing (e.g. it could not take the foreground). */
+  | 'request-failed'
+  | 'disposed'
+  /** Main could not tell which desktop window asked. */
+  | 'unknown-window'
+
+/**
+ * What became of the native menu. `fallback`: open Taskyard's own menu at the same point.
+ * `superseded`: a newer right-click replaced it (do nothing). `invoked`: Windows ran the item
+ * (New ▸ / Paste results arrive through desktop:changed). `invoke-failed`: the item was chosen
+ * but failed — tell the user; never open another menu.
+ */
+export type ShellMenuShowResult =
+  | { kind: 'fallback'; reason: ShellMenuFallbackReason }
+  | { kind: 'superseded' }
+  | { kind: 'dismissed' }
+  | { kind: 'taskyard'; id: string }
+  | { kind: 'intercepted'; verb: string | null; label: string; path: string[] }
+  | { kind: 'invoked'; verb: string | null; label: string; path: string[] }
+  | { kind: 'invoke-failed'; verb: string | null; label: string; path: string[]; message: string }
+
+export interface ShellMenuRequests {
+  'shellMenu:show': { args: [request: ShellMenuShowRequest]; result: ShellMenuShowResult }
+  /** Whether native menus can show at all this session (else Taskyard's menus open at once). */
+  'shellMenu:available': { args: []; result: boolean }
 }

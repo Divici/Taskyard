@@ -36,6 +36,10 @@ import {
   SC_CLOSE,
   SC_COMMAND_MASK,
   SPI_GETDESKWALLPAPER,
+  SFVIDM_EDIT_PASTE,
+  SFVIDM_EDIT_UNDO,
+  WM_CANCELMODE,
+  WM_COMMAND,
   WM_NCDESTROY,
   WM_SYSCOMMAND,
   WM_WINDOWPOSCHANGING
@@ -285,6 +289,17 @@ export function createKoffiWin32Api(koffi: Koffi, options: KoffiWin32ApiOptions)
     },
 
     allowSetForegroundWindow: (pid) => b.AllowSetForegroundWindow(pid),
+
+    cancelMenu: (owner) => b.PostMessageW(owner, WM_CANCELMODE, 0, 0),
+
+    foregroundWindow: () => b.GetForegroundWindow(),
+
+    desktopViewCommand(command) {
+      const host = getShellWindow()
+      const view = host === null ? null : b.FindWindowExW(host, null, 'SHELLDLL_DefView', null)
+      const id = command === 'undo' ? SFVIDM_EDIT_UNDO : SFVIDM_EDIT_PASTE
+      return view !== null && b.PostMessageW(view, WM_COMMAND, id, 0)
+    },
 
     isPrimaryButtonDown() {
       const vk = b.GetSystemMetrics(SM_SWAPBUTTON) !== 0 ? VK_RBUTTON : VK_LBUTTON

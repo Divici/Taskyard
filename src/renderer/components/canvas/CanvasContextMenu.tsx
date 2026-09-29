@@ -24,6 +24,11 @@ export interface CanvasContextMenuProps {
   toolsShown?: boolean
   /** Phase 10: "Show/Hide tools widget" (R9). */
   onToggleTools?(): void
+  /**
+   * Native menus (Phase 3): shows the real Windows desktop menu instead of this one. Resolves
+   * false when it could not (this menu then opens at the same point). Omitted: this menu only.
+   */
+  onNativeMenu?(at: { point: Point; shiftKey: boolean }): Promise<boolean>
   /** The canvas surface (the trigger). */
   children: React.ReactElement
 }
@@ -31,7 +36,9 @@ export interface CanvasContextMenuProps {
 /**
  * The desktop's right-click menu: New group here · Auto-organize… · Sort loose icons · Refresh
  * desktop · Settings · Display settings · Personalize · Quit, plus Show/Hide tools widget after
- * Sort loose icons (Phase 10).
+ * Sort loose icons (Phase 10). With native menus (Phase 3) it is the fallback: a right-click
+ * (or Shift+F10 / the menu key) goes to `onNativeMenu` first, and this menu opens at the same
+ * point only when the native one could not show.
  */
 export function CanvasContextMenu({
   onNewGroup,
@@ -43,9 +50,12 @@ export function CanvasContextMenu({
   onQuit,
   toolsShown = false,
   onToggleTools,
+  onNativeMenu,
   children
 }: CanvasContextMenuProps): React.JSX.Element {
   const clickedAt = useRef<Point>({ x: 0, y: 0 })
+  /** The next contextmenu is the fallback this component re-dispatches: let Radix open it. */
+  const fallbackNext = useRef(false)
 
   return (
     <ContextMenu modal={false}>
@@ -53,6 +63,27 @@ export function CanvasContextMenu({
         asChild
         onContextMenu={(event) => {
           clickedAt.current = { x: event.clientX, y: event.clientY }
+          if (fallbackNext.current) {
+            fallbackNext.current = false
+            return
+          }
+          if (!onNativeMenu) return
+          // No Radix menu now: the native one shows, or this one follows as the fallback.
+          event.preventDefault()
+          const trigger = event.currentTarget
+          const init: MouseEventInit = {
+            bubbles: true,
+            cancelable: true,
+            clientX: event.clientX,
+            clientY: event.clientY
+          }
+          void onNativeMenu({ point: { ...clickedAt.current }, shiftKey: event.shiftKey }).then(
+            (handled) => {
+              if (handled || !trigger.isConnected) return
+              fallbackNext.current = true
+              trigger.dispatchEvent(new MouseEvent('contextmenu', init))
+            }
+          )
         }}
       >
         {children}

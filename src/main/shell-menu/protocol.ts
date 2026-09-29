@@ -73,7 +73,9 @@ const showRequestSchema = z.object({
   interceptSubmenus: verbList,
   hideVerbs: verbList,
   hideSubmenus: verbList,
-  replaceSubmenus: z.array(replacementSchema).max(50)
+  replaceSubmenus: z.array(replacementSchema).max(50),
+  /** The HWND as a decimal string (like `showing.ownerHwnd`). */
+  returnFocusTo: z.string().regex(/^\d+$/).max(20).optional()
 })
 
 const helperRequestSchema = z.discriminatedUnion('type', [

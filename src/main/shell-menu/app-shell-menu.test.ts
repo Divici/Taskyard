@@ -7,8 +7,13 @@ import {
 } from './app-shell-menu'
 import type { ShellMenuHost } from './host'
 import { FakeHelperChild } from './fake-helper-child'
+import { createFakeShellMenuApi, FAKE_OWNER_HWND } from '../win32/shell-menu-fake'
+import type { ShellMenuApi } from '../win32/shell-menu-api'
 
-function setup(allow = true): {
+function setup(
+  allow = true,
+  api?: ShellMenuApi
+): {
   host: ShellMenuHost
   fork: Mock
   win32: FakeWin32Api
@@ -17,7 +22,7 @@ function setup(allow = true): {
 } {
   const children: FakeHelperChild[] = []
   const fork = vi.fn(() => {
-    const child = new FakeHelperChild({ pid: 5150 })
+    const child = new FakeHelperChild({ pid: 5150, api })
     children.push(child)
     return child
   })
@@ -75,5 +80,21 @@ describe('createAppShellMenu', () => {
       'shell-menu: AllowSetForegroundWindow(5150) was refused; the menu may not take the foreground'
     )
     host.dispose()
+  })
+
+  it('dismisses a replaced menu through Win32 (WM_CANCELMODE to the helper’s owner window)', async () => {
+    let host: ShellMenuHost | null = null
+    // The user right-clicks again while this menu is open: Taskyard cancels it.
+    const api = createFakeShellMenuApi({
+      choose: () => {
+        host?.cancelShows()
+        return 0
+      }
+    })
+    const made = setup(true, api)
+    host = made.host
+    await expect(made.host.show(REQUEST)).resolves.toEqual({ kind: 'dismissed' })
+    expect(made.win32.callsTo('cancelMenu')).toEqual([[FAKE_OWNER_HWND]])
+    made.host.dispose()
   })
 })

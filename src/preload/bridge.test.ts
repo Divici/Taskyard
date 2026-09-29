@@ -131,6 +131,21 @@ describe('createTaskyardApi', () => {
     ])
   })
 
+  it('maps the native-menu methods to their channels (native menus, Phase 3)', async () => {
+    const ipc = fakeIpcRenderer()
+    const api = createTaskyardApi(ipc, versions)
+    const request = {
+      kind: 'background' as const,
+      displayId: 1,
+      point: { x: 5, y: 6 },
+      extendedVerbs: true,
+      state: { iconSize: 'large' as const, gridSnap: true, quickHidden: false, toolsShown: true }
+    }
+    await api.shellMenu.show(request)
+    await api.shellMenu.available()
+    expect(ipc.invoke.mock.calls).toEqual([['shellMenu:show', request], ['shellMenu:available']])
+  })
+
   it('returns what main returned', async () => {
     const ipc = fakeIpcRenderer()
     ipc.invoke.mockResolvedValueOnce([{ id: 1 }])

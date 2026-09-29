@@ -9,6 +9,7 @@ import { connectInspector } from './inspector-sync'
 import { connectPeek } from './peek-sync'
 import { connectQuickHide } from './quick-hide'
 import { connectReconcile } from './reconcile-sync'
+import { connectShellMenu } from './shell-menu'
 import { LOAD_FAILED_TOAST } from './storage-messages'
 import { connectTheme } from './theme'
 
@@ -35,6 +36,9 @@ export function useBridgeSync(): void {
     const disconnectReconcile = connectReconcile()
     const disconnectDisplay = connectDisplay(api, window.location.search)
     const disconnectDesktop = connectDesktop(api)
+    // Native menus (Phase 3): whether they can show, and New ▸ / Paste items placed at the
+    // right-click point (after connectDesktop, so the items store has them first).
+    const disconnectShellMenu = connectShellMenu(api)
     // Phase 9: Peek (state pull, idle/click-outside signals) and quick-hide across displays.
     const disconnectPeek = connectPeek(api)
     const disconnectQuickHide = connectQuickHide(api)
@@ -43,6 +47,7 @@ export function useBridgeSync(): void {
     void hydrateStores(api)
     return () => {
       disconnectInspector()
+      disconnectShellMenu()
       disconnectQuickHide()
       disconnectPeek()
       disconnectReconcile()

@@ -6,6 +6,7 @@ import {
   IPC,
   isEventChannel,
   SETTINGS_IPC,
+  SHELL_MENU_IPC,
   STORE_NAMES
 } from './ipc'
 
@@ -84,6 +85,13 @@ describe('IPC channel names', () => {
   it('names the persisted renderer stores and the external URL allow-list', () => {
     expect(STORE_NAMES).toEqual(['settings', 'layout', 'tasks'])
     expect(EXTERNAL_URL_PROTOCOLS).toEqual(['ms-settings:', 'https:'])
+  })
+
+  it('names the native-menu channels (native menus, Phase 3)', () => {
+    expect(SHELL_MENU_IPC).toEqual({
+      show: 'shellMenu:show',
+      available: 'shellMenu:available'
+    })
   })
 
   it('names the Phase 11 settings inspector channels', () => {

@@ -91,6 +91,8 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
   const wallpapers = new Map<string, MonitorWallpaper>()
   const icons = new Map<string, IconBitmap>()
   const driveTypes = new Map<string, number>()
+  /** The last window emitForeground reported (what foregroundWindow answers). */
+  let foreground: Hwnd | null = null
   let windowAtCursor: Hwnd | null = null
   let primaryButtonDown = false
 
@@ -158,6 +160,7 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
       if (next !== null) zOrder = [...without(next), next]
     },
     emitForeground(hwnd) {
+      foreground = hwnd
       for (const listener of [...foregroundListeners]) listener(hwnd)
     },
     foregroundListenerCount: () => foregroundListeners.size,
@@ -170,6 +173,7 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
     setWallpaper: (rect, wallpaper) => wallpapers.set(rectKey(rect), wallpaper),
     setIcon: (file, index, px, icon) => icons.set(keyOf(file, index, px), icon),
     setDriveType: (root, type) => driveTypes.set(keyOf(root), type),
+
     setWindowAtCursor: (hwnd) => {
       windowAtCursor = hwnd
     },
@@ -270,6 +274,18 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
     },
     allowSetForegroundWindow(pid) {
       record('allowSetForegroundWindow', [pid])
+      return true
+    },
+    cancelMenu(owner) {
+      record('cancelMenu', [owner])
+      return true
+    },
+    foregroundWindow() {
+      record('foregroundWindow', [])
+      return foreground
+    },
+    desktopViewCommand(command) {
+      record('desktopViewCommand', [command])
       return true
     },
     isPrimaryButtonDown() {

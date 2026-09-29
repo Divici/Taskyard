@@ -74,6 +74,8 @@ export interface Win32Bindings {
   GetAsyncKeyState(vk: number): number
   GetSystemMetrics(index: number): number
   AllowSetForegroundWindow(pid: number): boolean
+  PostMessageW(hwnd: Hwnd, message: number, wParam: number, lParam: number): boolean
+  GetForegroundWindow(): Hwnd | null
   // dwmapi
   DwmGetWindowAttribute(hwnd: Hwnd, attribute: number, value: [number], size: number): number
   // comctl32
@@ -255,6 +257,12 @@ export function loadWin32Bindings(koffi: Koffi): Win32Bindings {
     GetSystemMetrics: user32.func('int __stdcall GetSystemMetrics(int index)'),
     AllowSetForegroundWindow: toBool(
       user32.func('int __stdcall AllowSetForegroundWindow(uint32_t pid)')
+    ),
+    GetForegroundWindow: user32.func('void * __stdcall GetForegroundWindow()'),
+    PostMessageW: toBool(
+      user32.func(
+        'int __stdcall PostMessageW(void *hwnd, uint32_t message, uintptr_t wParam, intptr_t lParam)'
+      )
     ),
     DwmGetWindowAttribute,
     SetWindowSubclass: toBool(

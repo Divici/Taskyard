@@ -260,6 +260,7 @@ export function loadShellMenuNative(koffi: Koffi) {
     'int __stdcall TrackPopupMenuEx(void *menu, uint32_t flags, int x, int y, void *hwnd, void *params)'
   )
   const SetForegroundWindow = user32.func('int __stdcall SetForegroundWindow(void *hwnd)')
+  const GetForegroundWindow = user32.func('void * __stdcall GetForegroundWindow()')
   const PostMessageW = user32.func(
     'int __stdcall PostMessageW(void *hwnd, uint32_t message, uintptr_t wParam, intptr_t lParam)'
   )
@@ -391,6 +392,7 @@ export function loadShellMenuNative(koffi: Koffi) {
     InsertMenuItemW,
     TrackPopupMenuEx,
     SetForegroundWindow,
+    GetForegroundWindow,
     PostMessageW,
     DefWindowProcW,
     CreateWindowExW,

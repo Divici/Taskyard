@@ -200,6 +200,17 @@ describe('createFakeWin32Api', () => {
     expect(api.callsTo('allowSetForegroundWindow')).toEqual([[4242]])
   })
 
+  it('dismisses menus by owner window and answers the foreground window (Phase 3 native menus)', () => {
+    const api = createFakeWin32Api()
+    expect(api.cancelMenu(0x5e11n)).toBe(true)
+    expect(api.callsTo('cancelMenu')).toEqual([[0x5e11n]])
+    expect(api.foregroundWindow()).toBeNull()
+    api.emitForeground(0x1234n)
+    expect(api.foregroundWindow()).toBe(0x1234n)
+    expect(api.desktopViewCommand('paste')).toBe(true)
+    expect(api.callsTo('desktopViewCommand')).toEqual([['paste']])
+  })
+
   it('answers drive types per drive root: fixed unless told otherwise (Phase 5 review fix)', () => {
     const api = createFakeWin32Api()
     expect(api.getDriveType('C:\\')).toBe(3)

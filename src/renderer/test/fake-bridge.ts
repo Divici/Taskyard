@@ -48,6 +48,7 @@ export interface FakeBridge extends TaskyardApi {
   quickHide: { [K in keyof Api['quickHide']]: Mocked<Api['quickHide'][K]> }
   wallpaper: { get: Mocked<Api['wallpaper']['get']> }
   timer: { notify: Mocked<Api['timer']['notify']> }
+  shellMenu: { [K in keyof Api['shellMenu']]: Mocked<Api['shellMenu'][K]> }
   on: Mocked<Api['on']>
   emit<E extends IpcEventName>(event: E, payload: IpcEvents[E]): void
   listenerCount(event: IpcEventName): number
@@ -202,6 +203,11 @@ export function createFakeBridge(options: FakeBridgeOptions = {}): FakeBridge {
     timer: {
       notify: vi.fn(async () => true) as FakeBridge['timer']['notify']
     },
+    // Native menus (Phase 3): off unless a test turns them on (Taskyard's menus open at once).
+    shellMenu: {
+      show: vi.fn(async () => ({ kind: 'fallback' as const, reason: 'unavailable' as const })),
+      available: vi.fn(async () => false)
+    } as unknown as FakeBridge['shellMenu'],
     on: on as unknown as FakeBridge['on'],
     emit(event, payload) {
       for (const listener of listeners.get(event) ?? []) (listener as (p: unknown) => void)(payload)

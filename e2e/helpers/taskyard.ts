@@ -47,14 +47,25 @@ export function createProfile(): Profile {
   }
 }
 
+/**
+ * Native menus (Phase 3) during e2e runs: `off` (the default) keeps Taskyard's own right-click
+ * menus, so no real Windows menu ever pops up under an automated run; `scripted` runs the fake
+ * shell-menu helper that the spec scripts from the main process (e2e/shell-menu.spec.ts).
+ */
+export type ShellMenuE2eMode = 'off' | 'scripted'
+
 /** Environment for a Taskyard process bound to the given profile. */
-export function taskyardEnv(profile: Profile): Record<string, string> {
+export function taskyardEnv(
+  profile: Profile,
+  shellMenu: ShellMenuE2eMode = 'off'
+): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [key, value] of Object.entries(process.env)) {
     if (value !== undefined && key !== 'ELECTRON_RUN_AS_NODE') env[key] = value
   }
   env[ENV.userData] = profile.userData
   env[ENV.desktopDirs] = profile.desktop
+  env[ENV.fakeShellMenu] = shellMenu === 'scripted' ? '1' : '0'
   return env
 }
 
@@ -64,14 +75,16 @@ export interface LaunchOptions {
    * so specs start from the steady state; a user launch (false) Peeks for up to 8 s (Phase 11).
    */
   autostart?: boolean
+  /** Native menus: off (Taskyard's menus, the default) or the scripted fake helper. */
+  shellMenu?: ShellMenuE2eMode
 }
 
 export function launchTaskyard(
   profile: Profile,
-  { autostart = true }: LaunchOptions = {}
+  { autostart = true, shellMenu = 'off' }: LaunchOptions = {}
 ): Promise<ElectronApplication> {
   const args = autostart ? [MAIN_ENTRY, '--autostart'] : [MAIN_ENTRY]
-  return electron.launch({ args, env: taskyardEnv(profile) })
+  return electron.launch({ args, env: taskyardEnv(profile, shellMenu) })
 }
 
 /**

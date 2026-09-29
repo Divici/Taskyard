@@ -7,7 +7,15 @@ import {
   type ShowMenuOutcome,
   type ShowMenuRequest
 } from './shell-menu-api'
-import { invokeOutcome, resolveShown, runInvoke, shapeMenu } from './shell-menu-shape'
+import {
+  FOREGROUND_REFUSED,
+  invokeOutcome,
+  invokesByVerb,
+  resolveShown,
+  returnsFocus,
+  runInvoke,
+  shapeMenu
+} from './shell-menu-shape'
 
 /**
  * A `ShellMenuApi` over scripted menus, for headless tests (and a scripted-choice fake mode):
@@ -19,6 +27,8 @@ import { invokeOutcome, resolveShown, runInvoke, shapeMenu } from './shell-menu-
 export interface FakeShellMenuApi extends ShellMenuApi {
   /** Every invoked verb (from `invokeVerb` or a chosen, non-intercepted shell item). */
   readonly invoked: { target: ShellMenuTarget; verb: string | null }[]
+  /** How each entry of `invoked` ran: by command id (a chosen item) or by verb string. */
+  readonly invokedBy: ('id' | 'verb')[]
   readonly shown: ShowMenuRequest[]
   readonly disposed: boolean
   /** How many times `pumpMessages` ran. */
@@ -35,6 +45,10 @@ export interface FakeShellMenuApi extends ShellMenuApi {
   readonly pasteProbes: number
   setClipboardPasteable(pasteable: boolean): void
   setChoice(choose: FakeChoice): void
+  /** Windows lets (true) or refuses (false) the helper's owner window the foreground. */
+  setForeground(granted: boolean): void
+  /** The windows `show` gave the foreground back to (`returnFocusTo`, when `returnsFocus`). */
+  readonly focusReturns: bigint[]
 }
 
 /** Picks the id the user "clicks" in the menu as shown; 0 dismisses. */
@@ -46,6 +60,8 @@ export interface FakeShellMenuOptions {
   ownerHwnd?: bigint
   /** What the clipboard probe answers (a pasteable clipboard or not); false by default. */
   clipboardPasteable?: boolean
+  /** False: the owner window cannot take the foreground, so `show` fails before showing. */
+  foreground?: boolean
 }
 
 export const FAKE_OWNER_HWND = 0x5e11n
@@ -164,6 +180,8 @@ export function createFakeShellMenuApi(options: FakeShellMenuOptions = {}): Fake
       )
     return set(tree)
   }
+  let foreground = options.foreground ?? true
+  const focusReturns: bigint[] = []
   let pumpFailure: Error | null = null
   let pumps = 0
   const invoked: FakeShellMenuApi['invoked'] = []
@@ -177,13 +195,15 @@ export function createFakeShellMenuApi(options: FakeShellMenuOptions = {}): Fake
     throw error
   }
 
-  const invoke = (target: ShellMenuTarget, verb: string | null): void => {
+  const invokedBy: ('id' | 'verb')[] = []
+  const invoke = (target: ShellMenuTarget, verb: string | null, by: 'id' | 'verb'): void => {
     if (invokeFailure !== null) {
       const error = invokeFailure
       invokeFailure = null
       throw error
     }
     invoked.push({ target, verb })
+    invokedBy.push(by)
   }
   const shape = (request: ShowMenuRequest, pasteState: boolean): ReturnType<typeof shapeMenu> => {
     const tree = menus(request.target, DEFAULT_BACKGROUND_SOURCE)
@@ -193,6 +213,7 @@ export function createFakeShellMenuApi(options: FakeShellMenuOptions = {}): Fake
 
   const api: FakeShellMenuApi = {
     invoked,
+    invokedBy,
     shown,
     get disposed() {
       return disposed
@@ -226,6 +247,10 @@ export function createFakeShellMenuApi(options: FakeShellMenuOptions = {}): Fake
     setChoice(next) {
       choose = next
     },
+    setForeground(granted) {
+      foreground = granted
+    },
+    focusReturns,
 
     enumerate(target, enumerateOptions) {
       failIfTold()
@@ -240,8 +265,10 @@ export function createFakeShellMenuApi(options: FakeShellMenuOptions = {}): Fake
 
     show(request, hooks): ShowMenuOutcome {
       failIfTold()
-      shown.push(request)
       const shaped = shape(request, true)
+      // Like the koffi api: no foreground, no menu (it could not be dismissed).
+      if (!foreground) throw new Error(FOREGROUND_REFUSED)
+      shown.push(request)
       hooks.onShowing({ ownerHwnd: options.ownerHwnd ?? FAKE_OWNER_HWND })
       const resolution = resolveShown(choose(shaped.menu, request), {
         tree: shaped.shell,
@@ -250,13 +277,26 @@ export function createFakeShellMenuApi(options: FakeShellMenuOptions = {}): Fake
         interceptSubmenus: request.interceptSubmenus,
         background: request.target.kind !== 'items'
       })
-      if (resolution.kind !== 'invoke') return resolution
-      return invokeOutcome(resolution, () => invoke(request.target, resolution.verb))
+      const background = request.target.kind !== 'items'
+      const outcome =
+        resolution.kind !== 'invoke'
+          ? resolution
+          : invokeOutcome(resolution, () =>
+              invoke(
+                request.target,
+                resolution.verb,
+                invokesByVerb(resolution.verb, background) ? 'verb' : 'id'
+              )
+            )
+      if (request.returnFocusTo !== undefined && returnsFocus(outcome)) {
+        focusReturns.push(BigInt(request.returnFocusTo))
+      }
+      return outcome
     },
 
     invokeVerb(target, verb) {
       failIfTold()
-      runInvoke(() => invoke(target, verb))
+      runInvoke(() => invoke(target, verb, 'verb'))
     },
 
     dispose() {

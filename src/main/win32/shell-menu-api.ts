@@ -9,6 +9,16 @@
  * menu, how Taskyard's own items are numbered, and what a chosen command means.
  */
 
+// Taskyard's entries in a native menu live in src/shared/shell-menu.ts (the renderer and main's
+// menu policy build them too).
+import type {
+  LabelSource,
+  SubmenuMatch,
+  SubmenuReplacement,
+  TaskyardMenuItem
+} from '@shared/shell-menu'
+export type { LabelSource, SubmenuMatch, SubmenuReplacement, TaskyardMenuItem }
+
 /** A point in screen coordinates, physical pixels (what TrackPopupMenuEx takes). */
 export interface ScreenPoint {
   x: number
@@ -59,43 +69,6 @@ export interface ShellMenuItem {
   submenu: ShellMenuItem[] | null
 }
 
-/**
- * Where a Taskyard item may take Windows' own (localized) label from, in the menu being shown:
- * the item with `verb`, or the `index`-th non-separator item of the submenu holding `submenu`
- * (a verb; e.g. Sort by ▸'s columns have no verbs: `{ submenu: 'sortascending', index: 0 }` is
- * "Name"). The item's own `label` is used when Windows has no such item.
- */
-export type LabelSource = { verb: string } | { submenu: string; index: number }
-
-/** Taskyard's own entries in a native menu. Ids are stable strings. */
-export type TaskyardMenuItem =
-  | {
-      kind: 'item'
-      id: string
-      label: string
-      disabled?: boolean
-      checked?: boolean
-      /** A radio bullet instead of a tick when checked (e.g. one of Large/Medium/Small icons). */
-      radio?: boolean
-      labelFrom?: LabelSource
-    }
-  | { kind: 'submenu'; label: string; items: TaskyardMenuItem[] }
-  | { kind: 'separator' }
-
-/** Which shell submenu a replacement takes over: by a verb it holds, or by its label. */
-export type SubmenuMatch = { verb: string } | { label: string }
-
-/**
- * Replaces a shell submenu in place (same position, Windows' own label unless `label` is given)
- * with Taskyard items — e.g. View ▸ and Sort by ▸ of the Desktop background, whose own commands
- * would only act on the invisible shell view.
- */
-export interface SubmenuReplacement {
-  match: SubmenuMatch
-  label?: string
-  items: TaskyardMenuItem[]
-}
-
 export interface ShowMenuRequest {
   target: ShellMenuTarget
   point: ScreenPoint
@@ -116,6 +89,12 @@ export interface ShowMenuRequest {
   hideSubmenus: string[]
   /** Shell submenus replaced by Taskyard items (applied before `hideVerbs`/`hideSubmenus`). */
   replaceSubmenus: SubmenuReplacement[]
+  /**
+   * Phase 3: the Taskyard window (HWND, decimal) to give the foreground back to once the menu
+   * closes, when nothing of Windows' opened (`returnsFocus`) and the helper still has it — so
+   * Taskyard's inline rename after New ▸ Folder or "New group here" gets the keyboard.
+   */
+  returnFocusTo?: string
 }
 
 export type ShowMenuOutcome =

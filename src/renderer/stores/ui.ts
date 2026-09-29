@@ -132,6 +132,12 @@ export interface UiState {
   confirmRequest: ConfirmRequest | null
   /** The empty-desktop hint card was closed this session. */
   hintDismissed: boolean
+  /**
+   * Native menus (Phase 3): right-clicks show the real Windows menus (main said its shell-menu
+   * helper can show them); false keeps Taskyard's own menus.
+   */
+  nativeMenus: boolean
+  setNativeMenus(on: boolean): void
   /** Replaces the selection; the anchor becomes `anchor` (default: the last id). */
   select(ids: string[], anchor?: string | null): void
   /** Ctrl+click: adds or removes one id and makes it the anchor. */
@@ -202,6 +208,7 @@ export function createUiStore(): UseBoundStore<StoreApi<UiState>> {
     renaming: null,
     confirmRequest: null,
     hintDismissed: false,
+    nativeMenus: false,
     drag: null,
     dropHint: null,
     snapGuides: [],
@@ -279,6 +286,7 @@ export function createUiStore(): UseBoundStore<StoreApi<UiState>> {
 
     setMarquee: (marquee) => set({ marquee }),
     setQuickHidden: (quickHidden) => set({ quickHidden }),
+    setNativeMenus: (nativeMenus) => set({ nativeMenus }),
     toggleQuickHidden: () => set((state) => ({ quickHidden: !state.quickHidden })),
     setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
     startRename: (renaming) => set({ renaming: { ...renaming } }),

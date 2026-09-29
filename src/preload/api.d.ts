@@ -11,6 +11,8 @@ import type {
   IpcEvents,
   PeekState,
   ShortcutStatus,
+  ShellMenuShowRequest,
+  ShellMenuShowResult,
   SaveRequest,
   SaveResult,
   StorageStatus,
@@ -131,6 +133,18 @@ export interface TaskyardApi {
      * one per countdown (`endsAt`). Resolves true when one was shown.
      */
     notify(request: TimerNotifyRequest): Promise<boolean>
+  }
+
+  /** Native menus (Phase 3): the real Windows desktop menu, shown by main's helper process. */
+  shellMenu: {
+    /**
+     * Shows the native Desktop background menu at the point and answers what became of it;
+     * `fallback` means: open Taskyard's own menu there instead. Never rejects for a helper
+     * failure (only for a malformed request).
+     */
+    show(request: ShellMenuShowRequest): Promise<ShellMenuShowResult>
+    /** Whether native menus can show this session (else open Taskyard's menus at once). */
+    available(): Promise<boolean>
   }
 
   /** Subscribes to a main → renderer event; returns the unsubscribe. */

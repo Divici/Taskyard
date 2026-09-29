@@ -34,6 +34,11 @@ export interface ShellMenuHostDeps {
   fork(): HelperChild
   /** `AllowSetForegroundWindow(pid)`: main has the foreground right after a right-click. */
   allowForeground(pid: number): void
+  /**
+   * Dismisses the menu owned by `ownerHwnd` (`PostMessage(owner, WM_CANCELMODE)`): the helper's
+   * thread is inside TrackPopupMenuEx and cannot be asked. Needed by `cancelShows`.
+   */
+  cancelMenu?(ownerHwnd: bigint): void
   log: {
     info(message: string): void
     warn(message: string, ...details: unknown[]): void
@@ -43,7 +48,13 @@ export interface ShellMenuHostDeps {
 }
 
 export type ShellMenuErrorCode =
-  'timeout' | 'helper-exited' | 'helper-failed' | 'request-failed' | 'disposed'
+  | 'timeout'
+  | 'helper-exited'
+  | 'helper-failed'
+  | 'request-failed'
+  | 'disposed'
+  /** `cancelShows`: a newer menu replaced this one before it was shown (not a failure). */
+  | 'cancelled'
 
 export class ShellMenuError extends Error {
   constructor(
@@ -70,6 +81,13 @@ export interface ShellMenuHost {
   show(request: ShowMenuRequest): Promise<ShowMenuOutcome>
   enumerate(target: ShellMenuTarget, options?: Partial<EnumerateOptions>): Promise<ShellMenuItem[]>
   invokeVerb(target: ShellMenuTarget, verb: string): Promise<void>
+  /**
+   * Phase 3 (a new right-click replaces the menu before it): show requests still queued are
+   * rejected as `cancelled`; the one the helper is serving is dismissed with WM_CANCELMODE — now
+   * if its menu is on screen, else the moment it shows — and resolves with its outcome as usual.
+   * Enumerate and invoke requests are left alone.
+   */
+  cancelShows(): void
   /** Called while a menu is on screen: its owner window (Phase 3: Peek counts it as Taskyard's). */
   onShowing(listener: (info: ShowingInfo) => void): () => void
   /** The running, ready helper, or null. */
@@ -91,6 +109,10 @@ interface Pending {
   reject(error: ShellMenuError): void
   timer: ReturnType<typeof setTimeout> | null
   showing: boolean
+  /** The menu's owner window once it is on screen. */
+  ownerHwnd: bigint | null
+  /** cancelShows ran while the helper was building this menu: dismiss it when it shows. */
+  cancelOnShow: boolean
 }
 
 interface Helper {
@@ -216,7 +238,9 @@ export function createShellMenuHost(deps: ShellMenuHostDeps): ShellMenuHost {
         if (active.timer !== null) clearTimeout(active.timer)
         active.timer = null
         const info: ShowingInfo = { ownerHwnd: BigInt(message.ownerHwnd), pid: self.pid ?? 0 }
+        active.ownerHwnd = info.ownerHwnd
         for (const listener of showingListeners) listener(info)
+        if (active.cancelOnShow) cancelMenu(info.ownerHwnd)
         return
       }
       case 'result':
@@ -256,7 +280,16 @@ export function createShellMenuHost(deps: ShellMenuHostDeps): ShellMenuHost {
     if (disposed)
       return Promise.reject(new ShellMenuError('disposed', 'the shell-menu host is disposed'))
     return new Promise<Result>((resolve, reject) => {
-      const pending: Pending = { id: nextId++, body, resolve, reject, timer: null, showing: false }
+      const pending: Pending = {
+        id: nextId++,
+        body,
+        resolve,
+        reject,
+        timer: null,
+        showing: false,
+        ownerHwnd: null,
+        cancelOnShow: false
+      }
       pending.timer = setTimeout(() => {
         pending.timer = null
         const wasActive = active === pending
@@ -274,6 +307,14 @@ export function createShellMenuHost(deps: ShellMenuHostDeps): ShellMenuHost {
       queue.push(pending)
       pump()
     })
+  }
+
+  const cancelMenu = (ownerHwnd: bigint): void => {
+    try {
+      deps.cancelMenu?.(ownerHwnd)
+    } catch (error) {
+      log.warn('shell-menu: could not dismiss the open menu', error)
+    }
   }
 
   const expectKind = <K extends Result['kind']>(
@@ -328,6 +369,16 @@ export function createShellMenuHost(deps: ShellMenuHostDeps): ShellMenuHost {
 
     async invokeVerb(target, verb) {
       expectKind(await request({ type: 'invoke', target, verb }), 'invoke')
+    },
+
+    cancelShows() {
+      const error = new ShellMenuError('cancelled', 'a newer menu replaced this one')
+      for (const pending of [...queue]) {
+        if (pending.body.type === 'show') fail(pending, error)
+      }
+      if (active?.body.type !== 'show') return
+      if (active.ownerHwnd !== null) cancelMenu(active.ownerHwnd)
+      else active.cancelOnShow = true
     },
 
     onShowing(listener) {

@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
-import { applyUserDataOverride, ENV, resolveLogLevel } from './env'
+import { applyUserDataOverride, ENV, resolveLogLevel, shellMenuMode } from './env'
 
 let tmp: string
 
@@ -24,8 +24,26 @@ describe('ENV', () => {
       userData: 'TASKYARD_USER_DATA',
       logLevel: 'TASKYARD_LOG_LEVEL',
       noWin32: 'TASKYARD_NO_WIN32',
-      desktopDirs: 'TASKYARD_DESKTOP_DIRS'
+      desktopDirs: 'TASKYARD_DESKTOP_DIRS',
+      fakeShellMenu: 'TASKYARD_FAKE_SHELL_MENU'
     })
+  })
+})
+
+describe('shellMenuMode (native menus, Phase 3)', () => {
+  it('uses the real helper with real Win32 only, unless told otherwise', () => {
+    expect(shellMenuMode({}, 'koffi')).toBe('real')
+    expect(shellMenuMode({}, 'fake')).toBe('off')
+    expect(shellMenuMode({}, 'unavailable')).toBe('off')
+  })
+
+  it('TASKYARD_FAKE_SHELL_MENU=1 scripts the menus (e2e); 0 turns native menus off', () => {
+    expect(shellMenuMode({ TASKYARD_FAKE_SHELL_MENU: '1' }, 'koffi')).toBe('fake')
+    expect(shellMenuMode({ TASKYARD_FAKE_SHELL_MENU: '1' }, 'fake')).toBe('fake')
+    expect(shellMenuMode({ TASKYARD_FAKE_SHELL_MENU: '0' }, 'koffi')).toBe('off')
+    expect(shellMenuMode({ TASKYARD_FAKE_SHELL_MENU: ' 1 ' }, 'koffi')).toBe('fake')
+    // Anything else is ignored.
+    expect(shellMenuMode({ TASKYARD_FAKE_SHELL_MENU: 'yes' }, 'koffi')).toBe('real')
   })
 })
 

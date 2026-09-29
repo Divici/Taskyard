@@ -39,6 +39,17 @@ export const WS_EX_APPWINDOW = 0x00040000
 export const DWMWA_CLOAKED = 14
 
 // Messages.
+/** Phase 3: dismisses an open popup menu (posted to the menu's owner window). */
+export const WM_CANCELMODE = 0x001f
+export const WM_COMMAND = 0x0111
+/**
+ * Phase 3: DefView's own Paste and Undo commands (FCIDM_SHVIEW_INSERT / _UNDO in shresdef.h).
+ * Sent to the desktop's real SHELLDLL_DefView they paste into the Desktop folder and run the
+ * shell's shared Undo — both verified on this machine; the windowless view Taskyard's menu comes
+ * from ignores them.
+ */
+export const SFVIDM_EDIT_PASTE = 0x701a
+export const SFVIDM_EDIT_UNDO = 0x701b
 export const WM_WINDOWPOSCHANGING = 0x0046
 export const WM_NCDESTROY = 0x0082
 export const WM_SYSCOMMAND = 0x0112

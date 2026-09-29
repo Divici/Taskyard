@@ -269,6 +269,46 @@ describe('createHelperCore', () => {
     expect(api.pasteProbes).toBe(0)
   })
 
+  it('reports an error before any menu shows when it cannot take the foreground (main falls back)', () => {
+    const { api, posted, core } = setup({ foreground: false })
+    core.handle(show(1))
+    expect(posted).toEqual([
+      { type: 'error', id: 1, message: expect.stringMatching(/foreground/i) }
+    ])
+    expect(api.shown).toHaveLength(0)
+  })
+
+  it('gives the foreground back to the window main named when the outcome allows it', () => {
+    const { api, core } = setup({ choose: (menu) => findItem(menu, 'New group here')!.id })
+    core.handle(show(1, { returnFocusTo: '4660' }))
+    expect(api.focusReturns).toEqual([4660n])
+
+    api.setChoice((menu) => findItem(menu, 'Properties')!.id)
+    core.handle(show(2, { returnFocusTo: '4660' }))
+    // Properties opens a dialog of its own: it keeps the foreground.
+    expect(api.focusReturns).toEqual([4660n])
+
+    api.setChoice(() => 0)
+    core.handle(show(3))
+    // Nobody named: nothing to give back.
+    expect(api.focusReturns).toEqual([4660n])
+  })
+
+  it('invokes Paste of a background menu by its verb, a file menu’s commands by id', () => {
+    const { api, core } = setup({
+      clipboardPasteable: true,
+      choose: (menu) => findItem(menu, 'Paste')!.id
+    })
+    core.handle(show(1))
+    api.setChoice((menu) => findItem(menu, 'Delete')!.id)
+    core.handle(show(2, { target: FILES }))
+    expect(api.invoked).toEqual([
+      { target: FOLDER, verb: 'paste' },
+      { target: FILES, verb: 'delete' }
+    ])
+    expect(api.invokedBy).toEqual(['verb', 'id'])
+  })
+
   it('invokes a verb without showing a menu', () => {
     const { api, posted, core } = setup()
     core.handle({ type: 'invoke', id: 6, target: FILES, verb: 'properties' })

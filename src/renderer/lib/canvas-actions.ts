@@ -8,12 +8,14 @@ import {
   type IconSize
 } from '@shared/group-metrics'
 import type { DesktopItem, Point, Rect } from '@shared/schema'
+import type { LooseSortKey } from '@shared/shell-menu'
 import { useItemsStore } from '../stores/items'
 import { useLayoutStore } from '../stores/layout'
+import { useSettingsStore } from '../stores/settings'
 import { useUiStore } from '../stores/ui'
 import { getBridge } from './bridge'
 import { isPrimaryDisplay } from './reconcile-sync'
-import { sortByName } from './sort-items'
+import { sortLoose } from './sort-items'
 
 // Desktop-level actions of the canvas (its menu, the marquee, the empty-desktop hint).
 
@@ -106,10 +108,29 @@ export async function confirmAutoOrganize(
   if (ok) autoOrganizeDisplay(displayId, area, iconSize)
 }
 
-/** "Sort loose icons": by name, column-first from the work area's top-left, around the groups. */
-export function sortLooseIcons(displayId: number, area: Rect, iconSize: IconSize): void {
-  const order = sortByName(looseItems(displayId)).map((item) => item.id)
+/**
+ * "Sort loose icons" (by name), and the native menu's Sort by ▸ (Phase 3: name, size, type or
+ * date modified): column-first from the work area's top-left, around the groups.
+ */
+export function sortLooseIcons(
+  displayId: number,
+  area: Rect,
+  iconSize: IconSize,
+  key: LooseSortKey = 'name'
+): void {
+  const order = sortLoose(looseItems(displayId), key).map((item) => item.id)
   useLayoutStore.getState().arrangeLoose(displayId, order, area, looseCell(iconSize))
+}
+
+/** The native menu's View ▸ Large / Medium / Small icons (Phase 3): Taskyard's icon size. */
+export function setIconSize(iconSize: IconSize): void {
+  useSettingsStore.getState().update({ iconSize })
+}
+
+/** The native menu's View ▸ Align icons to grid (Phase 3): Taskyard's grid snap. */
+export function toggleGridSnap(): void {
+  const { gridSnap } = useSettingsStore.getState().settings
+  useSettingsStore.getState().update({ gridSnap: !gridSnap })
 }
 
 /** "Refresh desktop": main scans again; the result arrives as desktop:changed. */

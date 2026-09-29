@@ -330,6 +330,91 @@ describe('peek', () => {
     expect(manager.peeking).toBe(true)
   })
 
+  describe('native menus (Phase 3): the shell-menu helper’s menu during a Peek', () => {
+    const HELPER_OWNER = 0x5e11n
+
+    it('keeps the peek while the menu is up (its owner window, a command passing the foreground on)', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      const release = manager.holdForMenu()
+
+      api.emitForeground(HELPER_OWNER)
+      // Paste hands the foreground to the next app while it runs; the helper then gives it back.
+      api.emitForeground(FAKE_APP_WINDOW)
+      api.emitForeground(windows()[0].hwnd)
+      expect(manager.peeking).toBe(true)
+
+      release()
+      expect(manager.peeking).toBe(true)
+    })
+
+    it('judges the foreground when the menu closes: another app there ends the peek', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      const release = manager.holdForMenu()
+
+      // The user dismissed the menu by clicking another app.
+      api.emitForeground(FAKE_APP_WINDOW)
+      expect(manager.peeking).toBe(true)
+      release()
+
+      expect(manager.peeking).toBe(false)
+      expect(log.info).toHaveBeenCalledWith(expect.stringContaining('another app'))
+    })
+
+    it('the helper’s window is foreign again once its menu closed', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      const release = manager.holdForMenu()
+      api.emitForeground(HELPER_OWNER)
+      release()
+      // Still the helper's hidden owner (nothing gave the foreground back): the peek ends.
+      expect(manager.peeking).toBe(false)
+    })
+
+    it('waits for the last of two overlapping menus', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      const first = manager.holdForMenu()
+      const second = manager.holdForMenu()
+      api.emitForeground(FAKE_APP_WINDOW)
+      first()
+      expect(manager.peeking).toBe(true)
+      second()
+      expect(manager.peeking).toBe(false)
+    })
+
+    it('the idle timer waits while a menu is open and restarts when it closes', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      api.emitForeground(windows()[0].hwnd)
+      const release = manager.holdForMenu()
+
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS * 3)
+      expect(manager.peeking).toBe(true)
+
+      release()
+      release() // twice is harmless
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS - 1)
+      expect(manager.peeking).toBe(true)
+      vi.advanceTimersByTime(1)
+      expect(manager.peeking).toBe(false)
+    })
+
+    it('never starts a peek by itself', () => {
+      start()
+      allReady()
+      const release = manager.holdForMenu()
+      release()
+      expect(manager.peeking).toBe(false)
+    })
+  })
+
   describe('idle pause ownership (Phase 9 review fixes)', () => {
     const contentsId = (index: number): number => windows()[index].webContents.id
 

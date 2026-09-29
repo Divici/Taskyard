@@ -19,13 +19,13 @@ import {
 } from 'electron'
 import log from 'electron-log/main'
 import { APP_ID, APP_NAME } from '@shared/app-info'
-import type { DesktopIcon } from '@shared/ipc'
+import type { DesktopChange, DesktopIcon } from '@shared/ipc'
 import trayIconPath from '../../build/icon.ico?asset'
 import { createAutostart, isAutostartLaunch } from './app/autostart'
 import { appVersion } from './app/app-version'
 import { boot, STOP_BOOT } from './app/boot'
 import { installCrashLogging } from './app/crash-log'
-import { applyUserDataOverride, ENV, resolveLogLevel } from './app/env'
+import { applyUserDataOverride, ENV, resolveLogLevel, shellMenuMode } from './app/env'
 import { configureLogger, defaultLogDir, LOG_FILE_NAME } from './app/logger'
 import { installQuitPath } from './app/quit-path'
 import { createQuickHide, registerQuickHideIpc } from './app/quick-hide'
@@ -58,7 +58,10 @@ import { startDisplayMatching } from './storage/display-match'
 import { replayJournal } from './storage/journal-replay'
 import { createStorage } from './storage/stores'
 import { createAppShellMenu, SHELL_MENU_HELPER_FILE } from './shell-menu/app-shell-menu'
+import { createCanvasMenuService, registerShellMenuIpc } from './shell-menu/canvas-menu'
 import type { ShellMenuHost } from './shell-menu/host'
+import { createNewItemTracker } from './shell-menu/new-item-tracker'
+import { createScriptedShellMenu, SHELL_MENU_SCRIPT_GLOBAL } from './shell-menu/scripted-shell-menu'
 import { createWin32Api } from './win32'
 import type { Win32Api } from './win32/api'
 import { iconBitmapToPng } from './win32/icon-bitmap'
@@ -152,6 +155,10 @@ function startPrimaryInstance(): void {
   const autostart = createAutostart({ app, log })
   // Native menus: the shell-menu helper process (real Win32 only; started with the windows).
   let shellMenu: ShellMenuHost | null = null
+  /** The Win32 api once selected (the shell-menu service recognises the helper's windows). */
+  let win32Api: Win32Api | null = null
+  /** TASKYARD_FAKE_SHELL_MENU=1: the e2e script drives the menus; nothing reaches the shell. */
+  let scriptedShellMenu = false
 
   // Every accepted save — any window's, or main's own — reaches every window, the saver too,
   // with its new revision (optimistic concurrency; the client side is src/shared/sync-doc.ts).
@@ -197,6 +204,33 @@ function startPrimaryInstance(): void {
   // The desktop folders' items (Phase 4). The service needs the Win32 api, which exists once the
   // windows do, so it is created in the scan step; desktop:* requests wait for it.
   const desktopDirs = resolveDesktopDirs({ env: process.env, userDesktop: app.getPath('desktop') })
+  // Native menus, Phase 3: the empty desktop's right-click shows the real Windows desktop menu;
+  // New ▸ / Paste items it makes go to the right-click point (tagged on desktop:changed).
+  const newItems = createNewItemTracker({ userDesktop: desktopDirs[0] })
+  registerShellMenuIpc(
+    ipcMain,
+    trust,
+    createCanvasMenuService({
+      host: () => shellMenu,
+      windowOf: (senderId) => {
+        const owner = desktop?.windows().find((entry) => entry.contents()?.id === senderId)
+        const bounds = owner ? desktop?.getDisplay(owner.displayId)?.bounds : undefined
+        if (!owner || !bounds) return null
+        return {
+          displayId: owner.displayId,
+          hwnd: owner.hwnd,
+          origin: { x: bounds.x, y: bounds.y }
+        }
+      },
+      dipToScreenPoint: (point) => screen.dipToScreenPoint(point),
+      peek: () => desktop,
+      newItems,
+      // The scripted fake (e2e) never reaches the real shell.
+      desktopViewCommand: (command) =>
+        scriptedShellMenu ? true : (win32Api?.desktopViewCommand(command) ?? false),
+      log
+    })
+  )
   let desktopFiles: DesktopService | null = null
   // Phase 5: icons for the desktop items, streamed as desktop:icon (created with the service).
   let stopIcons: () => void = () => {}
@@ -296,6 +330,7 @@ function startPrimaryInstance(): void {
         await app.whenReady()
         app.setAppUserModelId(APP_ID)
         const selection = await win32
+        if (selection.kind !== 'unavailable') win32Api = selection.api
         // Before any window registers its display: an entry whose display id changed (reboot,
         // re-plug) is re-matched first, so no window starts from an empty entry.
         stopDisplayMatching = startDisplayMatching({ screen, storage, log })
@@ -340,7 +375,7 @@ function startPrimaryInstance(): void {
           shortcuts.showPeek()
         }
         void wallpaper?.start()
-        if (selection.kind === 'koffi') shellMenu = startShellMenu(selection.api)
+        shellMenu = startShellMenu(selection)
         return desktop
       },
       // The full list goes to every window as desktop:changed; a window that loads later pulls
@@ -362,7 +397,14 @@ function startPrimaryInstance(): void {
           },
           journal: storage.ops,
           layout: storage.layout,
-          emit: (event, payload) => events.emit(event, payload),
+          // New ▸ / Paste results of the native menu carry where they go (new-item-tracker.ts).
+          emit: (event, payload) =>
+            events.emit(
+              event,
+              event === 'desktop:changed'
+                ? (newItems.annotate(payload as DesktopChange) as typeof payload)
+                : payload
+            ),
           env: process.env,
           log,
           icons: icons.service
@@ -424,15 +466,32 @@ function startPrimaryInstance(): void {
   /**
    * The shell-menu helper, pre-warmed so the first right-click does not wait for a process to
    * start. If it cannot start, right-clicks keep Taskyard's own menus (and the next request tries
-   * again).
+   * again). TASKYARD_FAKE_SHELL_MENU=1 runs the scripted fake instead (e2e), =0 none.
    */
-  function startShellMenu(api: Win32Api): ShellMenuHost {
-    const host = createAppShellMenu({
-      utilityProcess,
-      helperFile: SHELL_MENU_HELPER,
-      win32: api,
-      log
-    })
+  function startShellMenu(
+    selection: Awaited<ReturnType<typeof createWin32Api>>
+  ): ShellMenuHost | null {
+    const mode = shellMenuMode(process.env, selection.kind)
+    if (mode === 'off' || selection.kind === 'unavailable') {
+      log.info('shell-menu: native menus are off; right-clicks show Taskyard menus')
+      return null
+    }
+    let host: ShellMenuHost
+    if (mode === 'fake') {
+      const scripted = createScriptedShellMenu({ log })
+      // The e2e specs script the menus from the main process (app.evaluate).
+      ;(globalThis as Record<string, unknown>)[SHELL_MENU_SCRIPT_GLOBAL] = scripted.control
+      log.info('shell-menu: using the scripted fake (TASKYARD_FAKE_SHELL_MENU=1)')
+      scriptedShellMenu = true
+      host = scripted.host
+    } else {
+      host = createAppShellMenu({
+        utilityProcess,
+        helperFile: SHELL_MENU_HELPER,
+        win32: selection.api,
+        log
+      })
+    }
     host.start().catch((error: unknown) => {
       log.warn('shell-menu: the helper is unavailable; right-clicks keep Taskyard menus', error)
     })

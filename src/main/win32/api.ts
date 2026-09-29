@@ -51,6 +51,9 @@ export interface IconBitmap {
 
 export type Unsubscribe = () => void
 
+/** Phase 3: DefView commands Taskyard runs through Explorer's own desktop view. */
+export type DesktopViewCommand = 'undo' | 'paste'
+
 export interface Win32Api {
   /** Moves `hwnd` directly above the shell desktop window (no activation, no move/resize). */
   seatAboveShell(hwnd: Hwnd): void
@@ -112,6 +115,25 @@ export interface Win32Api {
    * (Taskyard, right after the user's right-click) may grant that. False when Windows refused.
    */
   allowSetForegroundWindow(pid: number): boolean
+  /**
+   * Phase 3: `PostMessage(owner, WM_CANCELMODE)` — closes the popup menu `owner` is tracking (the
+   * shell-menu helper's, when the user right-clicks again). False when Windows refused the post
+   * (e.g. the window is gone).
+   */
+  cancelMenu(owner: Hwnd): boolean
+  /**
+   * Phase 3: `GetForegroundWindow()`, or null. When a native menu closes, Peek judges the window
+   * that has the foreground then (another app's ends it).
+   */
+  foregroundWindow(): Hwnd | null
+  /**
+   * Phase 3: the native desktop menu's "Undo …" and "Paste" — posts DefView's command to
+   * Explorer's own desktop view (`SHELLDLL_DefView` under the shell window): Undo runs the shell's
+   * shared Undo (like Ctrl+Z on the desktop), Paste pastes into the user's Desktop folder. The
+   * windowless view Taskyard's menu comes from ignores both. False when Explorer's desktop view is
+   * not there.
+   */
+  desktopViewCommand(command: DesktopViewCommand): boolean
   /** `GetFileAttributesW` on the `\\?\` form of `path`; null when the path cannot be read. */
   getFileAttributes(path: string): number | null
   /**

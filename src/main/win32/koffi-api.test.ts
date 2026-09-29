@@ -23,6 +23,7 @@ import {
   SWP_NOZORDER,
   SC_CLOSE,
   SC_MINIMIZE,
+  WM_CANCELMODE,
   WM_NCDESTROY,
   WM_SYSCOMMAND,
   WM_WINDOWPOSCHANGING
@@ -402,6 +403,46 @@ describe('allowSetForegroundWindow (native menus: the shell-menu helper)', () =>
     expect(api.allowSetForegroundWindow(4242)).toBe(true)
     expect(api.allowSetForegroundWindow(1)).toBe(false)
     expect(AllowSetForegroundWindow).toHaveBeenCalledWith(4242)
+  })
+})
+
+describe('cancelMenu / desktopViewCommand / foregroundWindow (Phase 3: native menus)', () => {
+  it('posts WM_CANCELMODE to the menu owner and reports whether Windows queued it', () => {
+    const PostMessageW = vi.fn(() => true)
+    Object.assign(fb.b, { PostMessageW })
+    const api = createApi()
+    expect(api.cancelMenu(0x5e11n)).toBe(true)
+    expect(PostMessageW).toHaveBeenCalledWith(0x5e11n, WM_CANCELMODE, 0, 0)
+    expect(WM_CANCELMODE).toBe(0x001f)
+  })
+
+  it('runs Undo and Paste through the desktop’s real view (WM_COMMAND to SHELLDLL_DefView)', () => {
+    const PostMessageW = vi.fn(() => true)
+    Object.assign(fb.b, { PostMessageW })
+    const api = createApi()
+    expect(api.desktopViewCommand('undo')).toBe(true)
+    expect(api.desktopViewCommand('paste')).toBe(true)
+    expect(PostMessageW.mock.calls).toEqual([
+      [DEFVIEW, 0x0111, 0x701b, 0],
+      [DEFVIEW, 0x0111, 0x701a, 0]
+    ])
+  })
+
+  it('reports false when Explorer’s desktop view is not there', () => {
+    const PostMessageW = vi.fn(() => true)
+    Object.assign(fb.b, { PostMessageW, FindWindowExW: () => null })
+    const api = createApi()
+    expect(api.desktopViewCommand('paste')).toBe(false)
+    expect(PostMessageW).not.toHaveBeenCalled()
+  })
+
+  it('answers the foreground window (GetForegroundWindow), null when there is none', () => {
+    let foreground: Hwnd | null = APP
+    Object.assign(fb.b, { GetForegroundWindow: vi.fn(() => foreground) })
+    const api = createApi()
+    expect(api.foregroundWindow()).toBe(APP)
+    foreground = null
+    expect(api.foregroundWindow()).toBeNull()
   })
 })
 
