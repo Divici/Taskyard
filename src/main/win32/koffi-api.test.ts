@@ -394,6 +394,17 @@ describe('rootWindowAtCursor (Phase 8 drag-out)', () => {
   })
 })
 
+describe('allowSetForegroundWindow (native menus: the shell-menu helper)', () => {
+  it('grants the process the right to take the foreground and reports whether Windows agreed', () => {
+    const AllowSetForegroundWindow = vi.fn((pid: number) => pid === 4242)
+    Object.assign(fb.b, { AllowSetForegroundWindow })
+    const api = createApi()
+    expect(api.allowSetForegroundWindow(4242)).toBe(true)
+    expect(api.allowSetForegroundWindow(1)).toBe(false)
+    expect(AllowSetForegroundWindow).toHaveBeenCalledWith(4242)
+  })
+})
+
 describe('isPrimaryButtonDown (Phase 8 drag-out)', () => {
   it('reads the physical button that is primary: left, or right when the buttons are swapped', () => {
     const pressed = new Set<number>([VK_LBUTTON])

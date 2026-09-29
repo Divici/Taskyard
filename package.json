@@ -19,6 +19,7 @@
     "verify:zorder:packaged": "tsx scripts/verify-zorder.ts --packaged",
     "perf:fixture": "tsx scripts/perf-fixture.ts",
     "verify:koffi": "tsx scripts/verify-koffi.ts",
+    "spike:shell-menu": "tsx scripts/spike-shell-menu.ts",
     "dist": "electron-vite build && electron-builder --win nsis"
   },
   "dependencies": {

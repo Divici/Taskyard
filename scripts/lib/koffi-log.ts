@@ -27,6 +27,23 @@ export function findKoffiResult(logText: string, expected: Flavour = 'packaged')
   return { status: 'pending' }
 }
 
+/** The host's log lines for the shell-menu helper (src/main/shell-menu/host.ts). */
+const HELPER_READY_MARKER = 'shell-menu: helper ready'
+const HELPER_FAILURE_MARKERS = ['shell-menu: helper failed to start', 'shell-menu: helper exited']
+
+/** Classifies the main-process log by whether the shell-menu helper started, if it reported. */
+export function findHelperResult(
+  logText: string
+): Exclude<KoffiLogResult, { status: 'wrong-mode' }> {
+  for (const line of lines(logText)) {
+    if (line.includes(HELPER_READY_MARKER)) return { status: 'ok', line }
+    if (HELPER_FAILURE_MARKERS.some((marker) => line.includes(marker))) {
+      return { status: 'failed', line }
+    }
+  }
+  return { status: 'pending' }
+}
+
 export function tailLines(text: string, count: number): string {
   return lines(text).slice(-count).join('\n')
 }

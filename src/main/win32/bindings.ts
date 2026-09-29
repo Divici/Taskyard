@@ -73,6 +73,7 @@ export interface Win32Bindings {
   /** SHORT: the high bit (negative) means the key is down now. */
   GetAsyncKeyState(vk: number): number
   GetSystemMetrics(index: number): number
+  AllowSetForegroundWindow(pid: number): boolean
   // dwmapi
   DwmGetWindowAttribute(hwnd: Hwnd, attribute: number, value: [number], size: number): number
   // comctl32
@@ -252,6 +253,9 @@ export function loadWin32Bindings(koffi: Koffi): Win32Bindings {
     GetAncestor: user32.func('void * __stdcall GetAncestor(void *hwnd, uint32_t flags)'),
     GetAsyncKeyState: user32.func('int16_t __stdcall GetAsyncKeyState(int vk)'),
     GetSystemMetrics: user32.func('int __stdcall GetSystemMetrics(int index)'),
+    AllowSetForegroundWindow: toBool(
+      user32.func('int __stdcall AllowSetForegroundWindow(uint32_t pid)')
+    ),
     DwmGetWindowAttribute,
     SetWindowSubclass: toBool(
       comctl32.func('__stdcall', 'SetWindowSubclass', 'int', [

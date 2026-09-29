@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findKoffiResult, pollUntil, tailLines } from './koffi-log'
+import { findHelperResult, findKoffiResult, pollUntil, tailLines } from './koffi-log'
 
 const PACKAGED = '[2026-09-23 10:00:00.123] [info]  koffi: user32 loaded (packaged)'
 const DEV = '[2026-09-23 10:00:00.123] [info]  koffi: user32 loaded (dev)'
@@ -29,6 +29,39 @@ describe('findKoffiResult', () => {
       status: 'failed',
       line: FAILED
     })
+  })
+})
+
+describe('findHelperResult (the shell-menu helper in the packaged app)', () => {
+  const READY = '[2026-09-29 10:00:01.000] [info]  shell-menu: helper ready (pid 4242)'
+  const FAILED =
+    '[2026-09-29 10:00:01.000] [error] shell-menu: helper failed to start: Cannot find module'
+  const EXITED = '[2026-09-29 10:00:01.000] [warn]  shell-menu: helper exited (code 1)'
+
+  it('is pending until the helper reports', () => {
+    expect(
+      findHelperResult(`${PACKAGED}
+`)
+    ).toEqual({ status: 'pending' })
+  })
+
+  it('reports ok with the ready line', () => {
+    expect(
+      findHelperResult(`${PACKAGED}
+${READY}
+`)
+    ).toEqual({ status: 'ok', line: READY })
+  })
+
+  it('reports a helper that failed to start or exited before it was ready', () => {
+    expect(
+      findHelperResult(`${FAILED}
+`)
+    ).toEqual({ status: 'failed', line: FAILED })
+    expect(
+      findHelperResult(`${EXITED}
+`)
+    ).toEqual({ status: 'failed', line: EXITED })
   })
 })
 

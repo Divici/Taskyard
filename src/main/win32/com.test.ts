@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, type Mock } from 'vitest'
 import {
   checkHr,
   ComError,
   createComRuntime,
   hresultHex,
+  initOleApartment,
   parseGuid,
   POINTER_SIZE,
   RPC_E_CHANGED_MODE,
@@ -131,6 +132,7 @@ describe('createComRuntime', () => {
       CoTaskMemFree: vi.fn(),
       decodeString: vi.fn(() => 'text'),
       releaseProto: 'IUnknown::Release',
+      queryInterfaceProto: 'IUnknown::QueryInterface',
       ...overrides
     }
   }
@@ -215,6 +217,43 @@ describe('createComRuntime', () => {
     expect(ole32.CoTaskMemFree).toHaveBeenCalledTimes(1)
   })
 
+  it('joins the apartment once on init(), shared with createInstance', () => {
+    const mem = fakeMemory()
+    const ole32 = fakeOle32({ CoInitializeEx: vi.fn(() => S_FALSE) })
+    const com = createComRuntime(mem.koffi, ole32)
+    com.init()
+    com.init()
+    com.createInstance(
+      '{C2CF3110-460E-4fc1-B9D0-8A1C0C9CC4BD}',
+      '{B92B56A9-8B55-4E14-9A89-0199BBB6F93B}'
+    )
+    expect(ole32.CoInitializeEx).toHaveBeenCalledTimes(1)
+    const refused = createComRuntime(
+      mem.koffi,
+      fakeOle32({ CoInitializeEx: vi.fn(() => 0x8007000e | 0) })
+    )
+    expect(() => refused.init()).toThrow(/CoInitializeEx failed: HRESULT 0x8007000e/)
+  })
+
+  it('queries another interface through IUnknown::QueryInterface (slot 0); null when unsupported', () => {
+    const mem = fakeMemory()
+    const self = mem.object(0x7000n, 3)
+    const com = createComRuntime(mem.koffi, fakeOle32())
+    vi.mocked(mem.koffi.call).mockImplementation((_fn, _proto, ...args: unknown[]) => {
+      const [, iid, out] = args as [bigint, Buffer, [bigint | null]]
+      if (iid.equals(parseGuid('{BCFCE0A0-EC17-11D0-8D10-00A0C90F2719}'))) {
+        out[0] = 0x7300n
+        return 0
+      }
+      return 0x80004002 | 0 // E_NOINTERFACE
+    })
+    expect(com.queryInterface(self, '{BCFCE0A0-EC17-11D0-8D10-00A0C90F2719}')).toBe(0x7300n)
+    expect(com.queryInterface(self, '{000214F4-0000-0000-C000-000000000046}')).toBeNull()
+    const [first] = vi.mocked(mem.koffi.call).mock.calls
+    expect(first[0]).toBe(0xf000n + 0x7000n + 0n)
+    expect(first[1]).toBe('IUnknown::QueryInterface')
+  })
+
   it('frees the string even when decoding it throws', () => {
     const mem = fakeMemory()
     const ole32 = fakeOle32({
@@ -225,5 +264,38 @@ describe('createComRuntime', () => {
     const com = createComRuntime(mem.koffi, ole32)
     expect(() => com.takeString(0x99n)).toThrow('bad memory')
     expect(ole32.CoTaskMemFree).toHaveBeenCalledWith(0x99n)
+  })
+})
+
+describe('initOleApartment (the shell-menu helper: OLE clipboard for Copy, Cut and Paste)', () => {
+  const ole = (
+    hr: number,
+    apartment: number
+  ): { OleInitialize: Mock; CoGetApartmentType: Mock } => ({
+    OleInitialize: vi.fn(() => hr),
+    CoGetApartmentType: vi.fn((type: [number], qualifier: [number]) => {
+      type[0] = apartment
+      qualifier[0] = 0
+      return 0
+    })
+  })
+
+  it('initializes OLE and accepts a single-threaded apartment (STA or the main STA)', () => {
+    const fresh = ole(0, 0)
+    initOleApartment(fresh)
+    expect(fresh.OleInitialize).toHaveBeenCalledWith(null)
+    expect(() => initOleApartment(ole(S_FALSE, 3))).not.toThrow()
+  })
+
+  it('refuses a thread already in the multithreaded apartment', () => {
+    expect(() => initOleApartment(ole(RPC_E_CHANGED_MODE, 1))).toThrow(
+      /OleInitialize failed: HRESULT 0x80010106/
+    )
+  })
+
+  it('refuses when the apartment is not single-threaded after all', () => {
+    expect(() => initOleApartment(ole(0, 1))).toThrow(
+      /not a single-threaded apartment \(APTTYPE 1\)/
+    )
   })
 })

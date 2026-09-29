@@ -194,6 +194,12 @@ describe('createFakeWin32Api', () => {
     expect(api.isPrimaryButtonDown()).toBe(true)
   })
 
+  it('records AllowSetForegroundWindow grants and succeeds (native menus, shell-menu helper)', () => {
+    const api = createFakeWin32Api()
+    expect(api.allowSetForegroundWindow(4242)).toBe(true)
+    expect(api.callsTo('allowSetForegroundWindow')).toEqual([[4242]])
+  })
+
   it('answers drive types per drive root: fixed unless told otherwise (Phase 5 review fix)', () => {
     const api = createFakeWin32Api()
     expect(api.getDriveType('C:\\')).toBe(3)

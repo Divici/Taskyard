@@ -268,6 +268,10 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
       record('rootWindowAtCursor', [])
       return windowAtCursor
     },
+    allowSetForegroundWindow(pid) {
+      record('allowSetForegroundWindow', [pid])
+      return true
+    },
     isPrimaryButtonDown() {
       record('isPrimaryButtonDown', [])
       return primaryButtonDown

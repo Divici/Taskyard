@@ -17,6 +17,7 @@ export const COINIT_APARTMENTTHREADED = 0x2
 export const CLSCTX_INPROC_SERVER = 0x1
 export const CLSCTX_LOCAL_SERVER = 0x4
 /** IUnknown's vtable: QueryInterface 0, AddRef 1, Release 2. */
+export const IUNKNOWN_QUERY_INTERFACE = 0
 export const IUNKNOWN_RELEASE = 2
 
 /** The koffi functions a vtable call needs (`koffi.decode` with an offset, `koffi.call`). */
@@ -98,13 +99,19 @@ export interface Ole32 {
   decodeString(pointer: bigint): string
   /** The koffi prototype of `ULONG IUnknown::Release(this)`. */
   releaseProto: unknown
+  /** The koffi prototype of `HRESULT IUnknown::QueryInterface(this, REFIID, void **)`. */
+  queryInterfaceProto: unknown
 }
 
 export interface ComRuntime {
+  /** Joins this thread's apartment (once; later calls do nothing). Throws when COM refuses. */
+  init(): void
   /** CoCreateInstance(clsid, CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER) for interface `iid`. */
   createInstance(clsid: string, iid: string): bigint
   /** IUnknown::Release. */
   release(self: bigint): void
+  /** IUnknown::QueryInterface for `iid`; null when the object does not implement it. */
+  queryInterface(self: bigint, iid: string): bigint | null
   /** Reads a `CoTaskMemAlloc`ed out-string and frees it; null for a null pointer. */
   takeString(pointer: bigint | null): string | null
   /** `vtableCall`, returning the method's HRESULT. */
@@ -121,7 +128,12 @@ export function loadOle32(koffi: Koffi): Ole32 {
     ),
     CoTaskMemFree: ole32.func('void __stdcall CoTaskMemFree(void *pointer)'),
     decodeString: (pointer) => koffi.decode(pointer, 'char16_t', -1) as string,
-    releaseProto: koffi.proto('__stdcall', null, 'uint32_t', ['void *'])
+    releaseProto: koffi.proto('__stdcall', null, 'uint32_t', ['void *']),
+    queryInterfaceProto: koffi.proto('__stdcall', null, 'long', [
+      'void *',
+      'void *',
+      koffi.out(koffi.pointer('void *'))
+    ])
   }
 }
 
@@ -140,6 +152,8 @@ export function createComRuntime(koffi: ComKoffi, ole32: Ole32): ComRuntime {
   }
 
   return {
+    init: ensureApartment,
+
     createInstance(clsid, iid) {
       ensureApartment()
       const out: [bigint | null] = [null]
@@ -159,6 +173,19 @@ export function createComRuntime(koffi: ComKoffi, ole32: Ole32): ComRuntime {
       vtableCall(koffi, self, IUNKNOWN_RELEASE, ole32.releaseProto)
     },
 
+    queryInterface(self, iid) {
+      const out: [bigint | null] = [null]
+      const hr = vtableCall(
+        koffi,
+        self,
+        IUNKNOWN_QUERY_INTERFACE,
+        ole32.queryInterfaceProto,
+        parseGuid(iid),
+        out
+      ) as number
+      return (hr | 0) >= 0 && out[0] ? out[0] : null
+    },
+
     takeString(pointer) {
       if (!pointer) return null
       try {
@@ -169,5 +196,31 @@ export function createComRuntime(koffi: ComKoffi, ole32: Ole32): ComRuntime {
     },
 
     call: (self, index, proto, ...args) => vtableCall(koffi, self, index, proto, ...args) as number
+  }
+}
+
+/** CoGetApartmentType: the thread is an STA / the main STA (both fine for the shell's UI objects). */
+export const APTTYPE_STA = 0
+export const APTTYPE_MAINSTA = 3
+
+/** The ole32 calls `initOleApartment` needs. */
+export interface OleApartmentCalls {
+  OleInitialize(reserved: null): number
+  CoGetApartmentType(type: [number], qualifier: [number]): number
+}
+
+/**
+ * Makes this thread an OLE single-threaded apartment: `OleInitialize` (COM STA plus the OLE
+ * clipboard and drag and drop, which Copy, Cut and Paste in shell menus use), then checks with
+ * `CoGetApartmentType` that the thread really is an STA. Throws otherwise (a thread already in
+ * the multithreaded apartment cannot host shell menus).
+ */
+export function initOleApartment(ole: OleApartmentCalls): void {
+  checkHr(ole.OleInitialize(null), 'OleInitialize')
+  const type: [number] = [-1]
+  const qualifier: [number] = [0]
+  checkHr(ole.CoGetApartmentType(type, qualifier), 'CoGetApartmentType')
+  if (type[0] !== APTTYPE_STA && type[0] !== APTTYPE_MAINSTA) {
+    throw new ComError(`the thread is not a single-threaded apartment (APTTYPE ${type[0]})`, 0)
   }
 }

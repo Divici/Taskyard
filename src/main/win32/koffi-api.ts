@@ -284,6 +284,8 @@ export function createKoffiWin32Api(koffi: Koffi, options: KoffiWin32ApiOptions)
       return hit === null ? null : (b.GetAncestor(hit, GA_ROOT) ?? hit)
     },
 
+    allowSetForegroundWindow: (pid) => b.AllowSetForegroundWindow(pid),
+
     isPrimaryButtonDown() {
       const vk = b.GetSystemMetrics(SM_SWAPBUTTON) !== 0 ? VK_RBUTTON : VK_LBUTTON
       return (b.GetAsyncKeyState(vk) & 0x8000) !== 0

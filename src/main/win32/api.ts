@@ -105,6 +105,13 @@ export interface Win32Api {
    * at once wherever the cursor happens to be.
    */
   isPrimaryButtonDown(): boolean
+  /**
+   * `AllowSetForegroundWindow(pid)`: lets process `pid` take the foreground. Native menus: the
+   * shell-menu helper process must own the foreground while its popup menu is open (or the menu
+   * never closes on an outside click), and only a process that has the foreground itself
+   * (Taskyard, right after the user's right-click) may grant that. False when Windows refused.
+   */
+  allowSetForegroundWindow(pid: number): boolean
   /** `GetFileAttributesW` on the `\\?\` form of `path`; null when the path cannot be read. */
   getFileAttributes(path: string): number | null
   /**

@@ -1,10 +1,12 @@
 /**
- * npm run verify:koffi — proves koffi's native binary loads inside the packaged app.
+ * npm run verify:koffi — proves koffi's native binary loads inside the packaged app, in the main
+ * process and in the shell-menu helper (an Electron utility process that loads koffi itself).
  *
  * Launches dist/win-unpacked/Taskyard.exe (from `npm run dist`) with TASKYARD_USER_DATA pointing
  * at a fresh temp profile, waits up to 20 s for the main process to log
- * `koffi: user32 loaded (packaged)`, prints it, then kills the process tree.
- * Exit 0 on success; 1 on timeout, a logged load failure, or an early exit (log tail printed).
+ * `koffi: user32 loaded (packaged)` and then `shell-menu: helper ready (pid N)`, prints both, then
+ * kills the process tree. Exit 0 on success; 1 on timeout, a logged failure, or an early exit
+ * (log tail printed).
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -13,7 +15,13 @@ import { join, resolve } from 'node:path'
 import { ENV } from '../src/main/app/env'
 import { defaultSettings } from '../src/shared/defaults'
 import { LOG_FILE_NAME } from '../src/main/app/logger'
-import { findKoffiResult, pollUntil, tailLines, type KoffiLogResult } from './lib/koffi-log'
+import {
+  findHelperResult,
+  findKoffiResult,
+  pollUntil,
+  tailLines,
+  type KoffiLogResult
+} from './lib/koffi-log'
 
 const EXE = resolve(__dirname, '../dist/win-unpacked/Taskyard.exe')
 const TIMEOUT_MS = 20_000
@@ -21,12 +29,13 @@ const POLL_INTERVAL_MS = 250
 const TAIL_LINES = 30
 
 type Outcome =
-  Exclude<KoffiLogResult, { status: 'pending' }> | { status: 'exited'; code: number | null }
+  | (Exclude<KoffiLogResult, { status: 'pending' }> & { what?: 'helper' })
+  | { status: 'exited'; code: number | null }
 
 function describeFailure(outcome: Exclude<Outcome, { status: 'ok' }> | undefined): string {
   if (outcome === undefined) return `no koffi line within ${TIMEOUT_MS / 1000} s`
   if (outcome.status === 'exited') return `Taskyard.exe exited early (code ${outcome.code})`
-  return `${outcome.status}: ${outcome.line}`
+  return `${outcome.what === 'helper' ? 'shell-menu helper ' : ''}${outcome.status}: ${outcome.line}`
 }
 
 function log(message: string): void {
@@ -86,10 +95,17 @@ async function main(): Promise<number> {
     exitCode = null
   })
 
+  let koffiLine: string | null = null
   const outcome = await pollUntil<Outcome>(
     () => {
-      const result = findKoffiResult(readLog(), 'packaged')
-      if (result.status !== 'pending') return result
+      const text = readLog()
+      const result = findKoffiResult(text, 'packaged')
+      if (result.status !== 'pending' && result.status !== 'ok') return result
+      if (result.status === 'ok') {
+        koffiLine = result.line
+        const helper = findHelperResult(text)
+        if (helper.status !== 'pending') return { ...helper, what: 'helper' }
+      }
       if (exitCode !== undefined) return { status: 'exited', code: exitCode }
       return undefined
     },
@@ -101,8 +117,11 @@ async function main(): Promise<number> {
 
   let status = 1
   if (outcome?.status === 'ok') {
+    if (koffiLine) console.log(koffiLine)
     console.log(outcome.line)
-    log('PASS — koffi loaded user32.dll inside the packaged app.')
+    log(
+      'PASS — koffi loaded user32.dll inside the packaged app, and the shell-menu helper started.'
+    )
     status = 0
   } else {
     log(`FAIL — ${describeFailure(outcome)}`)

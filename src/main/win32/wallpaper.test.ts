@@ -53,6 +53,8 @@ function fakeCom(
   const byId = (id: string): FakeMonitor | undefined => monitors.find((m) => m.id === id)
 
   const com: ComRuntime = {
+    init: vi.fn(),
+    queryInterface: vi.fn(() => null),
     createInstance: vi.fn(() => {
       state.created += 1
       return 0x7000n + BigInt(state.created)

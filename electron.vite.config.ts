@@ -7,7 +7,16 @@ const sharedAlias = { '@shared': resolve('src/shared') }
 
 export default defineConfig({
   main: {
-    resolve: { alias: sharedAlias }
+    resolve: { alias: sharedAlias },
+    build: {
+      rollupOptions: {
+        // The shell-menu helper runs in its own Electron utility process (native menus).
+        input: {
+          index: resolve('src/main/index.ts'),
+          'shell-menu-helper': resolve('src/main/shell-menu/helper.ts')
+        }
+      }
+    }
   },
   preload: {
     resolve: { alias: sharedAlias },

@@ -14,7 +14,8 @@ import {
   protocol,
   screen,
   shell,
-  Tray
+  Tray,
+  utilityProcess
 } from 'electron'
 import log from 'electron-log/main'
 import { APP_ID, APP_NAME } from '@shared/app-info'
@@ -56,6 +57,8 @@ import { createSenderGuard } from './ipc/sender-guard'
 import { startDisplayMatching } from './storage/display-match'
 import { replayJournal } from './storage/journal-replay'
 import { createStorage } from './storage/stores'
+import { createAppShellMenu, SHELL_MENU_HELPER_FILE } from './shell-menu/app-shell-menu'
+import type { ShellMenuHost } from './shell-menu/host'
 import { createWin32Api } from './win32'
 import type { Win32Api } from './win32/api'
 import { iconBitmapToPng } from './win32/icon-bitmap'
@@ -68,6 +71,7 @@ import { registerDisplayIpc } from './windows/display-ipc'
 
 const RENDERER_FILE = join(__dirname, '../renderer/index.html')
 const PRELOAD_FILE = join(__dirname, '../preload/index.js')
+const SHELL_MENU_HELPER = join(__dirname, SHELL_MENU_HELPER_FILE)
 
 // Order matters: userData must be final before the single-instance lock (which lives in
 // userData) is requested and before the logger writes to userData/logs.
@@ -146,6 +150,8 @@ function startPrimaryInstance(): void {
   })
   // Phase 11: Start with Windows follows Settings (packaged builds only).
   const autostart = createAutostart({ app, log })
+  // Native menus: the shell-menu helper process (real Win32 only; started with the windows).
+  let shellMenu: ShellMenuHost | null = null
 
   // Every accepted save — any window's, or main's own — reaches every window, the saver too,
   // with its new revision (optimistic concurrency; the client side is src/shared/sync-doc.ts).
@@ -177,6 +183,8 @@ function startPrimaryInstance(): void {
     shortcuts.dispose()
     tray?.dispose()
     tray = null
+    shellMenu?.dispose()
+    shellMenu = null
   })
   // Phase 11: the settings inspector's Peek hold, the data folder and About.
   registerSettingsIpc(ipcMain, trust, {
@@ -332,6 +340,7 @@ function startPrimaryInstance(): void {
           shortcuts.showPeek()
         }
         void wallpaper?.start()
+        if (selection.kind === 'koffi') shellMenu = startShellMenu(selection.api)
         return desktop
       },
       // The full list goes to every window as desktop:changed; a window that loads later pulls
@@ -410,6 +419,24 @@ function startPrimaryInstance(): void {
       log.error('tray: could not create the tray icon', error)
       return null
     }
+  }
+
+  /**
+   * The shell-menu helper, pre-warmed so the first right-click does not wait for a process to
+   * start. If it cannot start, right-clicks keep Taskyard's own menus (and the next request tries
+   * again).
+   */
+  function startShellMenu(api: Win32Api): ShellMenuHost {
+    const host = createAppShellMenu({
+      utilityProcess,
+      helperFile: SHELL_MENU_HELPER,
+      win32: api,
+      log
+    })
+    host.start().catch((error: unknown) => {
+      log.warn('shell-menu: the helper is unavailable; right-clicks keep Taskyard menus', error)
+    })
+    return host
   }
 
   /** The wallpaper service, its taskyard:// handler, and a refresh on every display change. */
