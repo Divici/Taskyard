@@ -21,12 +21,39 @@ view.
 - **Rename**: **F2** (this renames the file on disk).
 - **Delete**: **Delete** sends the selection to the Recycle Bin after you confirm.
 - **Copy as path**: **Ctrl+Shift+C**.
-- **Menu**: right-click, or **Shift+F10** / the menu key.
+- **Menu**: right-click, or **Shift+F10** / the menu key — see [Right-click menus](#right-click-menus).
 - Arrow keys move the selection.
 
 Drag icons to move them on the desktop or into a group. Drag an icon out onto another app or an
 Explorer window to hand the file to it. Drop files from Explorer onto Taskyard to move them into
 your Desktop folder; an **Undo** toast gives you 6 seconds to take it back.
+
+## Right-click menus
+
+Right-click, **Shift+F10**, or the menu key opens a menu at the pointer (keyboard: at the
+focused item). Taskyard shows the **real Windows menu** — the same one Explorer would show —
+with Taskyard's own items mixed in, so none of the regular right-click options go away.
+
+- **Empty desktop**: the native Windows background menu (New ▸, Paste, Display settings,
+  Personalize, Open in Terminal, your shell extensions) with a **Taskyard ▸** submenu added at
+  the top (New group here, Auto-organize…, Sort loose icons, Show/Hide tools widget, Refresh
+  desktop, Taskyard settings, Quit Taskyard). **View ▸** and **Sort by ▸** are replaced with
+  Taskyard's own icon-size and sort-loose-icons submenus, since Windows' versions act on an
+  icon layer Taskyard doesn't use; Refresh rescans the desktop, and Paste/Undo act on your real
+  Desktop folder.
+- **An icon** (or a whole selection, when every selected item is in the same folder): the
+  native Windows file menu (Open, Open with, Send to, Cut, Copy, Create shortcut, Delete,
+  Properties, and any shell extensions you have installed), with **Remove from group** added
+  near the top when the icon is in a group. **Rename** opens Taskyard's inline rename instead
+  of Windows' own — it's hidden entirely when Taskyard can't rename the selection (several
+  items selected, or a read-only Public Desktop item).
+- **Shift+right-click** (or Shift + the menu key) adds Windows' extended verbs, the same ones
+  you'd see holding Shift in Explorer's own menu.
+- **If the native menu can't be shown** — rare: a crash, a timeout, or Windows refusing it the
+  foreground — Taskyard's own menu opens at the same spot instead. The right-click never comes
+  up empty.
+- The group's **…** menu and the tools widget's menu are always Taskyard's own menus; Windows
+  has no equivalent for either.
 
 ## Groups
 
@@ -44,7 +71,8 @@ your Desktop folder; an **Undo** toast gives you 6 seconds to take it back.
 - **Reorder icons**: drag an icon to another spot in the same group; an accent bar shows where it
   lands. A group sorted by name, type or date switches to **Manual** and keeps your order.
 - **Rename**: double-click is roll-up, so use **F2** on the title bar or the group menu.
-- **Group menu** (right-click the title, the **…** button, or **Shift+F10**): rename, roll up,
+- **Group menu** (right-click the title, the **…** button, or **Shift+F10**; always Taskyard's
+  own menu — see [Right-click menus](#right-click-menus)): rename, roll up,
   sort by manual / name / type / modified, icon size, move to another display, keep visible during
   quick-hide, delete (the icons go back to the desktop; no file is deleted). The **Sort by**,
   **Icon size** and **Move to display** submenus open on hover, on click, or with **→**.
@@ -62,6 +90,11 @@ your Desktop folder; an **Undo** toast gives you 6 seconds to take it back.
 The floating widget has three tabs along its top: **Tasks · Timer · Stopwatch**. Click one, or
 focus the tabs and use **←**/**→** (**Home**/**End** jump to the first or last). A glowing dot on
 the Timer or Stopwatch tab means it is running.
+
+Each tab's content is centred in the space it's given. Drag the widget taller and Timer and
+Stopwatch centre themselves in the extra room; Tasks keeps its **Add a task…** row pinned under
+the tabs and centres only the list below it. Content taller than the widget starts at the top
+and scrolls — nothing is ever clipped.
 
 - **Tasks**: click anywhere on the **Add a task…** row, type, then press **Enter** or click the
   round **+** button (it lights up once there is text). The field stays ready for the next task.

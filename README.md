@@ -27,10 +27,17 @@ and a focus timer.
   Explorer (with a 6-second Undo), or drag icons out to other apps.
 - **Quick-hide and Peek.** Double-click empty desktop to hide everything; press the Peek shortcut
   to bring your groups above whatever app is open.
+- **Real Windows right-click menus.** Right-click empty desktop for the actual Windows background
+  menu — New ▸, Paste, Display settings, Personalize, your shell extensions — with a
+  **Taskyard ▸** submenu on top and Taskyard's own View ▸/Sort by ▸ swapped in. Right-click an
+  icon for the actual Windows file menu, with **Remove from group** added and Rename opening
+  Taskyard's inline rename. Shift+right-click adds Windows' extended verbs, and Taskyard's own
+  menu opens instead if the native one can't be shown — the right-click never comes up empty.
 - **To-do list, focus timer and stopwatch.** A floating glass widget with Tasks · Timer · Stopwatch
-  tabs along its top: add (Enter or the + button), edit, check off and reorder tasks; start, pause
-  and stop a countdown linked to a task, with a Windows notification when it ends and an inline
-  Mark done; time anything with a stopwatch that keeps laps and keeps running across restarts.
+  tabs along its top, its content centred in the space you give it: add (Enter or the + button),
+  edit, check off and reorder tasks; start, pause and stop a countdown linked to a task, with a
+  Windows notification when it ends and an inline Mark done; time anything with a stopwatch that
+  keeps laps and keeps running across restarts.
 - **Your look.** Follows the Windows light/dark theme (or pick one), with sliders for glass opacity
   and blur, accent colours, icon size, and a reduced-motion switch.
 - **Saves itself.** Layout, tasks and settings are saved automatically and restored at sign-in;
