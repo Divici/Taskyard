@@ -5,7 +5,7 @@ wallpaper and shows every Desktop item — loose like the real desktop, or insid
 groups you can move, resize, roll up and quick-hide. A floating tools widget holds a to-do list
 and a focus timer.
 
-**[⬇ Download Taskyard for Windows 11 (x64)](https://github.com/Divici/Taskyard/releases/latest/download/Taskyard-0.1.0-setup.exe)**
+**[⬇ Download Taskyard for Windows 11 (x64)](https://github.com/Divici/Taskyard/releases/latest/download/Taskyard-Setup.exe)**
 · [All releases](https://github.com/Divici/Taskyard/releases)
 
 <p>
@@ -38,7 +38,7 @@ and a focus timer.
 
 ## Download and install
 
-1. Download **[Taskyard-0.1.0-setup.exe](https://github.com/Divici/Taskyard/releases/latest/download/Taskyard-0.1.0-setup.exe)**.
+1. Download **[Taskyard-Setup.exe](https://github.com/Divici/Taskyard/releases/latest/download/Taskyard-Setup.exe)**.
 2. Run it. The installer is not code-signed, so Windows SmartScreen may say _"Windows protected
    your PC"_ — click **More info › Run anyway**.
 3. Taskyard starts and appears in the tray. Right-click the tray icon for Settings, Peek and Quit.
