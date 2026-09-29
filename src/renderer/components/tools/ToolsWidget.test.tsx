@@ -107,6 +107,29 @@ describe('ToolsWidget', () => {
     expect(tablist).toHaveClass('mx-auto')
   })
 
+  it('centred content: the tab panel is a flex column that each tool fills with its scroll body, also after roll-up', async () => {
+    const { region, user } = renderWidget()
+    const panel = (): HTMLElement => within(region).getByRole('tabpanel')
+
+    for (const tool of ['Tasks', 'Timer', 'Stopwatch']) {
+      await user.click(within(region).getByRole('tab', { name: tool }))
+      expect(panel()).toHaveClass('flex', 'flex-col', 'flex-1', 'min-h-0')
+      // The tool fills the panel; its scroll body holds one centred block.
+      expect(panel().children).toHaveLength(1)
+      expect(panel().firstElementChild).toHaveClass('flex-1', 'min-h-0')
+      const body = panel().querySelector('[data-tool-body]') as HTMLElement
+      expect(body).toHaveClass('overflow-y-auto')
+      expect(body.firstElementChild).toHaveAttribute('data-tool-content')
+    }
+
+    await user.dblClick(within(region).getByRole('heading', { name: 'Stopwatch' }))
+    expect(within(region).queryByRole('tabpanel')).toBeNull()
+    await user.dblClick(within(region).getByRole('heading', { name: 'Stopwatch' }))
+    const body = panel().querySelector('[data-tool-body]') as HTMLElement
+    expect(body).toBe(within(region).getByRole('group', { name: 'Stopwatch' }))
+    expect(body.firstElementChild).toHaveClass('my-auto')
+  })
+
   it('round 2: both counting tools wear the running dot on their tab', () => {
     vi.useFakeTimers()
     vi.setSystemTime(T0)

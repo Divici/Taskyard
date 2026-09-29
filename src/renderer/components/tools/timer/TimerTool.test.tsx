@@ -403,9 +403,9 @@ describe('TimerTool', () => {
 
   it('round 2: ring, focus line, buttons, presets and fields share one centre line', () => {
     setup({ tasks: [task('t', 'Write report')], timer: { linkedTaskId: 't' } })
-    const view = screen.getByRole('group', { name: 'Timer' })
+    const content = screen.getByRole('group', { name: 'Timer' }).firstElementChild!
 
-    expect(view).toHaveClass('flex-col', 'items-center')
+    expect(content).toHaveClass('flex-col', 'items-center')
     const rows = [
       screen.getByTestId('timer-ring'),
       screen.getByText('Focus: Write report'),
@@ -413,6 +413,29 @@ describe('TimerTool', () => {
       screen.getByRole('group', { name: 'Presets' }),
       screen.getByRole('spinbutton', { name: 'Custom minutes' }).closest('[data-timer-fields]')!
     ]
-    for (const row of rows) expect(row.parentElement).toBe(view)
+    for (const row of rows) expect(row.parentElement).toBe(content)
+  })
+
+  it('centred content: the view scrolls and holds one block with auto margins (centred when shorter, from the top when taller)', () => {
+    setup({ timer: { status: 'finished', finishedAway: true, endsAt: T0 - 1 } })
+    const view = screen.getByRole('group', { name: 'Timer' })
+
+    // The view is the scroll body: a flex column that fills the tab panel and scrolls.
+    expect(view).toHaveAttribute('data-tool-body')
+    expect(view).toHaveClass('flex', 'flex-col', 'flex-1', 'min-h-0', 'overflow-y-auto')
+    // Its only child is the content: one block whose auto margins centre it vertically.
+    expect(view.children).toHaveLength(1)
+    const content = view.firstElementChild as HTMLElement
+    expect(content).toHaveAttribute('data-tool-content')
+    expect(content).toHaveClass('my-auto', 'w-full', 'shrink-0', 'flex-col', 'items-center')
+    for (const part of [
+      screen.getByTestId('timer-ring'),
+      screen.getByText('Finished while you were away'),
+      screen.getByRole('group', { name: 'Presets' }),
+      screen.getByRole('spinbutton', { name: 'Custom minutes' }),
+      screen.getByTestId('timer-announcer')
+    ]) {
+      expect(content).toContainElement(part)
+    }
   })
 })

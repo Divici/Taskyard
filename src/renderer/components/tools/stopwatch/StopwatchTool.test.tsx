@@ -172,4 +172,27 @@ describe('StopwatchTool', () => {
       })
     )
   })
+
+  it('centred content: the view scrolls and holds one block with auto margins, laps included', async () => {
+    const { user } = setup()
+    await user.click(screen.getByRole('button', { name: 'Start' }))
+    advance(1_000)
+    await user.click(screen.getByRole('button', { name: 'Lap' }))
+    const view = screen.getByRole('group', { name: 'Stopwatch' })
+
+    expect(view).toHaveAttribute('data-tool-body')
+    expect(view).toHaveClass('flex', 'flex-col', 'flex-1', 'min-h-0', 'overflow-y-auto')
+    expect(view.children).toHaveLength(1)
+    const content = view.firstElementChild as HTMLElement
+    expect(content).toHaveAttribute('data-tool-content')
+    expect(content).toHaveClass('my-auto', 'w-full', 'shrink-0', 'flex-col', 'items-center')
+    for (const part of [
+      screen.getByTestId('stopwatch-ring'),
+      screen.getByRole('button', { name: 'Pause' }),
+      screen.getByRole('combobox', { name: 'Focus on…' }),
+      screen.getByRole('list', { name: 'Laps' })
+    ]) {
+      expect(content).toContainElement(part)
+    }
+  })
 })

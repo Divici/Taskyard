@@ -37,7 +37,8 @@ const TOOL_VIEWS: Readonly<Record<ToolId, () => React.JSX.Element>> = {
 /**
  * The floating tools widget (Decision 6 + its 2026-09-23 extension): the group chrome — title
  * bar drag, 8 resize handles (min 280 × 220), roll-up, quick-hide — around the tab switcher at
- * the top (round 2: Tasks · Timer · Stopwatch, centred) and the active tool under it. Its rect,
+ * the top (round 2: Tasks · Timer · Stopwatch, centred) and the active tool under it, filling the
+ * rest and centring its content there (2026-09-29; Tasks keeps its add row on top). Its rect,
  * roll-up and active tool are saved per display (layout `tools`); moves and resizes preview
  * locally and save once, on release. The header names the active tool and shows a clock per
  * `headerClockFor` (the countdown's time left, or rolled up on the Stopwatch tab the stopwatch).
@@ -147,7 +148,8 @@ export function ToolsWidget({
               role="tabpanel"
               id={`${idPrefix}-panel`}
               aria-labelledby={`${idPrefix}-tab-${active}`}
-              className="min-h-0 w-full min-w-0 flex-1"
+              // A flex column the active tool fills; each tool centres its own content in it.
+              className="flex min-h-0 w-full min-w-0 flex-1 flex-col"
             >
               <ActiveTool />
             </div>

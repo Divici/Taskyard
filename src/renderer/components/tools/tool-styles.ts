@@ -6,9 +6,28 @@ import { cn } from '../../lib/utils'
 /** Controls that handle Space themselves (the view's Start/Pause shortcut skips them). */
 export const SPACE_OWNERS = 'input, select, textarea, button, [contenteditable]'
 
-/** The column every counting tool is laid out in: one centre line, evenly spaced. */
-export const TOOL_COLUMN =
-  'flex h-full min-h-0 flex-col items-center gap-2 overflow-y-auto rounded-[12px] px-1 outline-none [scrollbar-width:thin] focus-visible:ring-2 focus-visible:ring-accent-1/60'
+/**
+ * A tool's scroll body (2026-09-29, Decision 1): a flex column that fills the space it is given
+ * and scrolls. Mark it `data-tool-body`; its one child is the content, marked `data-tool-content`
+ * and styled with TOOL_CENTRED.
+ */
+export const TOOL_BODY = 'flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-width:thin]'
+
+/**
+ * The content inside a TOOL_BODY. Auto margins share out the free space, so the block is centred
+ * while it is shorter than the body; once it is taller they collapse to 0, so it starts at the
+ * top and scrolls (`justify-center` would push its top out of reach instead).
+ */
+export const TOOL_CENTRED = 'my-auto w-full shrink-0'
+
+/** A counting tool's view (Timer, Stopwatch): a focusable scroll body. */
+export const TOOL_VIEW = cn(
+  TOOL_BODY,
+  'rounded-[12px] px-1 outline-none focus-visible:ring-2 focus-visible:ring-accent-1/60'
+)
+
+/** Its content: one centred column, one centre line, evenly spaced. */
+export const TOOL_COLUMN = cn(TOOL_CENTRED, 'flex flex-col items-center gap-2')
 
 /** Width of the rows under the ring (buttons, presets, fields), centred in the column. */
 export const TOOL_ROW = 'w-full max-w-[260px]'

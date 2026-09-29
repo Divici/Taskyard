@@ -13,7 +13,8 @@ import {
   SECONDARY_BUTTON,
   SPACE_OWNERS,
   TOOL_COLUMN,
-  TOOL_ROW
+  TOOL_ROW,
+  TOOL_VIEW
 } from '../tool-styles'
 import { ProgressRing } from './ProgressRing'
 import { useTimerTick } from './useTimerTick'
@@ -61,7 +62,8 @@ function LinkedTaskAction({ id, done }: { id: string; done: boolean }): React.JS
  * "Mark done" while it is open, "Done ✓ · Undo" once it is done (round 2). Space toggles
  * Start/Pause and Esc (running) asks before stopping, while the view has focus. The display is a
  * `role="timer"` that is not live; a separate polite region says "1 minute left" and "Timer
- * finished".
+ * finished". The view scrolls and its content is one block, centred while shorter than the view
+ * and from the top once taller (2026-09-29).
  */
 export function TimerTool(): React.JSX.Element {
   const timer = useTasksStore((state) => state.timer)
@@ -167,137 +169,140 @@ export function TimerTool(): React.JSX.Element {
           void confirmStop()
         }
       }}
-      className={TOOL_COLUMN}
+      data-tool-body=""
+      className={TOOL_VIEW}
     >
-      <ProgressRing
-        progress={progress}
-        finished={finished}
-        paused={timer.status === 'paused'}
-        caption={caption}
-      >
-        <div
-          role="timer"
-          aria-live="off"
-          aria-label="Time left"
-          className={cn(
-            'font-light tracking-tight text-text-primary tabular-nums',
-            remaining >= 3_600_000 ? 'text-[26px]' : 'text-[34px]',
-            finished && 'text-accent-1'
-          )}
+      <div data-tool-content="" className={TOOL_COLUMN}>
+        <ProgressRing
+          progress={progress}
+          finished={finished}
+          paused={timer.status === 'paused'}
+          caption={caption}
         >
-          {formatClock(remaining)}
-        </div>
-      </ProgressRing>
-
-      {finished && timer.finishedAway && (
-        <p className="shrink-0 text-center text-[11px] leading-4 text-text-tertiary">
-          Finished while you were away
-        </p>
-      )}
-      <FocusLine task={linked} />
-
-      <div className={cn(TOOL_ROW, 'flex flex-wrap items-center justify-center gap-2')}>
-        <button
-          type="button"
-          onClick={primary}
-          className={PRIMARY_BUTTON}
-          aria-label={
-            timer.status === 'running' ? 'Pause' : timer.status === 'paused' ? 'Resume' : 'Start'
-          }
-        >
-          {timer.status === 'running' ? (
-            <Pause aria-hidden="true" className="size-3.5" />
-          ) : (
-            <Play aria-hidden="true" className="size-3.5" />
-          )}
-          {timer.status === 'running' ? 'Pause' : timer.status === 'paused' ? 'Resume' : 'Start'}
-        </button>
-        <button
-          type="button"
-          onClick={() => timerController.stop()}
-          disabled={timer.status === 'idle'}
-          className={SECONDARY_BUTTON}
-          aria-label="Stop"
-        >
-          <Square aria-hidden="true" className="size-3" />
-          Stop
-        </button>
-        {finished && linked && <LinkedTaskAction id={linked.id} done={linked.done} />}
-      </div>
-
-      <div
-        role="group"
-        aria-label="Presets"
-        className={cn(TOOL_ROW, 'flex flex-wrap items-center justify-center gap-1.5')}
-      >
-        {timer.presetsMs.map((ms) => (
-          <button
-            key={ms}
-            type="button"
-            aria-pressed={!counting && timer.durationMs === ms}
-            disabled={counting}
-            onClick={() => timerController.setDuration(ms)}
+          <div
+            role="timer"
+            aria-live="off"
+            aria-label="Time left"
             className={cn(
-              'h-7 rounded-full border px-2.5 text-[11px] font-medium transition-[background-color,border-color,color,box-shadow] duration-[180ms] focus-visible:ring-2 focus-visible:ring-accent-1 focus-visible:outline-none disabled:opacity-40',
-              !counting && timer.durationMs === ms
-                ? 'border-accent-1/70 bg-accent-1/15 text-accent-1 shadow-[0_0_10px_color-mix(in_srgb,var(--accent-1)_35%,transparent)]'
-                : 'border-white/10 text-text-secondary hover:border-accent-1/40 hover:text-text-primary [[data-theme=light]_&]:border-black/10'
+              'font-light tracking-tight text-text-primary tabular-nums',
+              remaining >= 3_600_000 ? 'text-[26px]' : 'text-[34px]',
+              finished && 'text-accent-1'
             )}
           >
-            {ms / MINUTE} min
-          </button>
-        ))}
-      </div>
+            {formatClock(remaining)}
+          </div>
+        </ProgressRing>
 
-      <div
-        data-timer-fields=""
-        className={cn(TOOL_ROW, 'flex flex-col gap-1.5 text-[11px] text-text-secondary')}
-      >
-        <div className="flex items-center gap-2">
-          <label htmlFor={customId} className="w-16 shrink-0">
-            Custom
-          </label>
-          <input
-            id={customId}
-            type="number"
-            inputMode="numeric"
-            aria-label="Custom minutes"
-            min={1}
-            max={180}
-            step={1}
-            value={custom}
-            disabled={counting}
-            aria-invalid={customInvalid || undefined}
-            aria-describedby={customInvalid ? hintId : undefined}
-            onChange={(event) => {
-              setCustom(event.target.value)
-              setCustomInvalid(false)
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                applyCustom()
-              }
-            }}
-            onBlur={applyCustom}
-            className={cn(FIELD, 'w-16', customInvalid && 'border-red-400/80')}
-          />
-          <span aria-hidden="true">min</span>
-        </div>
-        {customInvalid && (
-          <p id={hintId} className="text-[11px] text-red-300 [[data-theme=light]_&]:text-red-700">
-            {CUSTOM_HINT}
+        {finished && timer.finishedAway && (
+          <p className="shrink-0 text-center text-[11px] leading-4 text-text-tertiary">
+            Finished while you were away
           </p>
         )}
-        <TaskPicker
-          active={active}
-          linked={linked}
-          onLink={(taskId) => timerController.linkTask(taskId)}
-        />
-      </div>
+        <FocusLine task={linked} />
 
-      <div data-testid="timer-announcer" aria-live="polite" className="sr-only">
-        {announcement}
+        <div className={cn(TOOL_ROW, 'flex flex-wrap items-center justify-center gap-2')}>
+          <button
+            type="button"
+            onClick={primary}
+            className={PRIMARY_BUTTON}
+            aria-label={
+              timer.status === 'running' ? 'Pause' : timer.status === 'paused' ? 'Resume' : 'Start'
+            }
+          >
+            {timer.status === 'running' ? (
+              <Pause aria-hidden="true" className="size-3.5" />
+            ) : (
+              <Play aria-hidden="true" className="size-3.5" />
+            )}
+            {timer.status === 'running' ? 'Pause' : timer.status === 'paused' ? 'Resume' : 'Start'}
+          </button>
+          <button
+            type="button"
+            onClick={() => timerController.stop()}
+            disabled={timer.status === 'idle'}
+            className={SECONDARY_BUTTON}
+            aria-label="Stop"
+          >
+            <Square aria-hidden="true" className="size-3" />
+            Stop
+          </button>
+          {finished && linked && <LinkedTaskAction id={linked.id} done={linked.done} />}
+        </div>
+
+        <div
+          role="group"
+          aria-label="Presets"
+          className={cn(TOOL_ROW, 'flex flex-wrap items-center justify-center gap-1.5')}
+        >
+          {timer.presetsMs.map((ms) => (
+            <button
+              key={ms}
+              type="button"
+              aria-pressed={!counting && timer.durationMs === ms}
+              disabled={counting}
+              onClick={() => timerController.setDuration(ms)}
+              className={cn(
+                'h-7 rounded-full border px-2.5 text-[11px] font-medium transition-[background-color,border-color,color,box-shadow] duration-[180ms] focus-visible:ring-2 focus-visible:ring-accent-1 focus-visible:outline-none disabled:opacity-40',
+                !counting && timer.durationMs === ms
+                  ? 'border-accent-1/70 bg-accent-1/15 text-accent-1 shadow-[0_0_10px_color-mix(in_srgb,var(--accent-1)_35%,transparent)]'
+                  : 'border-white/10 text-text-secondary hover:border-accent-1/40 hover:text-text-primary [[data-theme=light]_&]:border-black/10'
+              )}
+            >
+              {ms / MINUTE} min
+            </button>
+          ))}
+        </div>
+
+        <div
+          data-timer-fields=""
+          className={cn(TOOL_ROW, 'flex flex-col gap-1.5 text-[11px] text-text-secondary')}
+        >
+          <div className="flex items-center gap-2">
+            <label htmlFor={customId} className="w-16 shrink-0">
+              Custom
+            </label>
+            <input
+              id={customId}
+              type="number"
+              inputMode="numeric"
+              aria-label="Custom minutes"
+              min={1}
+              max={180}
+              step={1}
+              value={custom}
+              disabled={counting}
+              aria-invalid={customInvalid || undefined}
+              aria-describedby={customInvalid ? hintId : undefined}
+              onChange={(event) => {
+                setCustom(event.target.value)
+                setCustomInvalid(false)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  applyCustom()
+                }
+              }}
+              onBlur={applyCustom}
+              className={cn(FIELD, 'w-16', customInvalid && 'border-red-400/80')}
+            />
+            <span aria-hidden="true">min</span>
+          </div>
+          {customInvalid && (
+            <p id={hintId} className="text-[11px] text-red-300 [[data-theme=light]_&]:text-red-700">
+              {CUSTOM_HINT}
+            </p>
+          )}
+          <TaskPicker
+            active={active}
+            linked={linked}
+            onLink={(taskId) => timerController.linkTask(taskId)}
+          />
+        </div>
+
+        <div data-testid="timer-announcer" aria-live="polite" className="sr-only">
+          {announcement}
+        </div>
       </div>
     </div>
   )

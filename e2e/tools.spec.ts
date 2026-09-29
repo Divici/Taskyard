@@ -308,3 +308,149 @@ test('stopwatch: start, laps, linked task → restart → still counting from th
     profile.dispose()
   }
 })
+
+interface Centring {
+  /** The content's centre minus its scroll body's centre (px). */
+  dx: number
+  dy: number
+  /** The content's top minus the body's top (px). */
+  top: number
+  overflow: boolean
+  scrollTop: number
+}
+
+/**
+ * Where a tool's content sits in the scroll body around `part` (the nearest ancestor that
+ * scrolls vertically): the content is the union of the body's in-flow children.
+ */
+function centring(part: Locator): Promise<Centring> {
+  return part.evaluate((node) => {
+    let body: HTMLElement | null = node as HTMLElement
+    while (body && !['auto', 'scroll'].includes(getComputedStyle(body).overflowY)) {
+      body = body.parentElement
+    }
+    if (!body) throw new Error('no scroll body')
+    const rects = Array.from(body.children)
+      .filter((child) => getComputedStyle(child).position !== 'absolute')
+      .map((child) => child.getBoundingClientRect())
+      .filter((rect) => rect.height > 0)
+    const top = Math.min(...rects.map((rect) => rect.top))
+    const bottom = Math.max(...rects.map((rect) => rect.bottom))
+    const left = Math.min(...rects.map((rect) => rect.left))
+    const right = Math.max(...rects.map((rect) => rect.right))
+    const box = body.getBoundingClientRect()
+    const bodyTop = box.top + body.clientTop
+    const bodyLeft = box.left + body.clientLeft
+    return {
+      dx: (left + right) / 2 - (bodyLeft + body.clientWidth / 2),
+      dy: (top + bottom) / 2 - (bodyTop + body.clientHeight / 2),
+      top: top - bodyTop,
+      overflow: body.scrollHeight > body.clientHeight,
+      scrollTop: body.scrollTop
+    }
+  })
+}
+
+/** Each tool's content is centred in its body (Tasks: the list area under the add row). */
+async function expectCentred(widget: Locator): Promise<void> {
+  const parts: Array<[string, Locator]> = [
+    ['Tasks', widget.getByRole('list', { name: 'Tasks' })],
+    ['Timer', widget.getByTestId('timer-ring')],
+    ['Stopwatch', widget.getByTestId('stopwatch-ring')]
+  ]
+  for (const [tool, part] of parts) {
+    await widget.getByRole('tab', { name: tool }).click()
+    await expect(widget.getByRole('heading', { name: tool })).toBeVisible()
+    const at = await centring(part)
+    expect(at.overflow, tool).toBe(false)
+    expect(Math.abs(at.dy), `${tool} dy`).toBeLessThanOrEqual(2)
+    expect(Math.abs(at.dx), `${tool} dx`).toBeLessThanOrEqual(2)
+  }
+}
+
+/** Drags one of the widget's resize edges with the real mouse. */
+async function dragEdge(
+  page: Page,
+  widget: Locator,
+  edge: string,
+  dx: number,
+  dy: number
+): Promise<void> {
+  const box = (await widget.locator(`[data-resize-edge="${edge}"]`).boundingBox())!
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + dx, y + dy, { steps: 8 })
+  await page.mouse.up()
+}
+
+test('centred content: resized taller with the mouse, each tool centres; 50 laps start at the top and scroll', async () => {
+  const profile = createProfile()
+  let app: ElectronApplication | undefined
+  try {
+    app = await launchTaskyard(profile)
+    const page = await primaryWindow(app)
+    const widget = page.getByRole('region', { name: 'Tools' })
+    await expect(widget).toBeVisible()
+
+    // At the default size, and at the 280 px minimum width made much taller (real mouse).
+    await expectCentred(widget)
+    const start = (await widget.boundingBox())!
+    await dragEdge(page, widget, 'e', -150, 0)
+    await expect.poll(async () => (await widget.boundingBox())!.width).toBe(280)
+    await dragEdge(page, widget, 's', 0, 320)
+    await expect
+      .poll(async () => (await widget.boundingBox())!.height)
+      .toBeGreaterThanOrEqual(start.height + 300)
+    await expectCentred(widget)
+
+    // With tasks (active and completed) the list area still centres; the add row stays on top.
+    await widget.getByRole('tab', { name: 'Tasks' }).click()
+    for (const text of ['Write report', 'Water plants', 'Call the bank'])
+      await addTask(widget, text)
+    await widget.getByRole('checkbox', { name: 'Water plants' }).click()
+    await expectCentred(widget)
+    await widget.getByRole('tab', { name: 'Tasks' }).click()
+    const row = (await widget.locator('[data-add-row]').boundingBox())!
+    const tabs = (await widget.getByRole('tablist').boundingBox())!
+    expect(row.y - (tabs.y + tabs.height)).toBeLessThanOrEqual(12)
+
+    // After a roll-up and back, still centred.
+    await widget.getByRole('button', { name: 'Tools options' }).click()
+    await page.getByRole('menuitem', { name: 'Roll up' }).click()
+    await expect(widget.getByRole('tabpanel')).toHaveCount(0)
+    await widget.getByRole('button', { name: 'Tools options' }).click()
+    await page.getByRole('menuitem', { name: 'Roll down' }).click()
+    await expect(widget.getByRole('tabpanel')).toBeVisible()
+    await expect
+      .poll(async () => (await widget.boundingBox())!.height)
+      .toBeGreaterThanOrEqual(start.height + 300)
+    await expectCentred(widget)
+
+    // 50 laps: taller than the body, so the content starts at the top (nothing clipped) and the
+    // body scrolls, from the top, with the mouse wheel.
+    await widget.getByRole('tab', { name: 'Stopwatch' }).click()
+    await widget.getByRole('button', { name: 'Start' }).click()
+    const lap = widget.getByRole('button', { name: 'Lap' })
+    const laps = widget.getByRole('list', { name: 'Laps' }).getByRole('listitem')
+    for (let n = 1; n <= 50; n++) await lap.click()
+    await expect(laps).toHaveCount(50)
+    const ring = widget.getByTestId('stopwatch-ring')
+    const tall = await centring(ring)
+    expect(tall).toMatchObject({ overflow: true, scrollTop: 0 })
+    expect(Math.abs(tall.top)).toBeLessThanOrEqual(1)
+    await expect(ring).toBeInViewport({ ratio: 1 })
+    await expect(widget.getByRole('button', { name: 'Pause' })).toBeInViewport({ ratio: 1 })
+    await expect(laps.last()).not.toBeInViewport()
+    const body = (await widget.getByRole('group', { name: 'Stopwatch' }).boundingBox())!
+    await page.mouse.move(body.x + body.width / 2, body.y + body.height / 2)
+    await page.mouse.wheel(0, 5_000)
+    await expect.poll(async () => (await centring(ring)).scrollTop).toBeGreaterThan(0)
+    await expect(laps.last()).toBeInViewport()
+    await expect(laps.last()).toHaveAccessibleName(/^Lap 1: split /)
+  } finally {
+    await app?.close()
+    profile.dispose()
+  }
+})

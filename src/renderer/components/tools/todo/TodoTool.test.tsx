@@ -195,4 +195,33 @@ describe('TodoTool', () => {
 
     expect(await axe(container)).toHaveNoViolations()
   })
+
+  it('centred content: the add row stays pinned on top; only the list area scrolls and centres its content', async () => {
+    const user = userEvent.setup()
+    setup()
+    const row = screen.getByRole('textbox', { name: 'Add a task' }).closest('[data-add-row]')!
+    const root = row.parentElement!
+    const empty = screen.getByText('Nothing to do.').closest('[role="status"]') as HTMLElement
+
+    // The tool fills the tab panel: the add row first, then the list area taking the rest.
+    expect(root).toHaveClass('flex', 'flex-col', 'flex-1', 'min-h-0')
+    expect(root.firstElementChild).toBe(row)
+    const area = root.querySelector('[data-tool-body]') as HTMLElement
+    expect(area.parentElement).toBe(root)
+    expect(area).not.toContainElement(row as HTMLElement)
+    expect(area).toHaveClass('flex', 'flex-col', 'flex-1', 'min-h-0', 'overflow-y-auto')
+    // One centred block inside it, the empty state included.
+    expect(area.children).toHaveLength(1)
+    const content = area.firstElementChild as HTMLElement
+    expect(content).toHaveAttribute('data-tool-content')
+    expect(content).toHaveClass('my-auto', 'w-full', 'shrink-0')
+    expect(content).toContainElement(empty)
+
+    await user.type(screen.getByRole('textbox', { name: 'Add a task' }), 'One{Enter}')
+    await user.click(screen.getByRole('checkbox', { name: 'One' }))
+    expect(area.children).toHaveLength(1)
+    expect(area.firstElementChild).toBe(content)
+    expect(content).toContainElement(screen.getByRole('list', { name: 'Tasks' }))
+    expect(content).toContainElement(screen.getByRole('button', { name: 'Completed (1)' }))
+  })
 })
