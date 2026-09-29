@@ -5,6 +5,51 @@ wallpaper and shows every Desktop item — loose like the real desktop, or insid
 groups you can move, resize, roll up and quick-hide. A floating tools widget holds a to-do list
 and a focus timer.
 
+**[⬇ Download Taskyard for Windows 11 (x64)](https://github.com/Divici/Taskyard/releases/latest/download/Taskyard-0.1.0-setup.exe)**
+· [All releases](https://github.com/Divici/Taskyard/releases)
+
+<p>
+  <img src="docs/images/first-run.png" alt="First-run card on glass over the wallpaper" width="420">
+  <img src="docs/images/tasks-dark.png" alt="Tools widget, Tasks tab, dark theme" width="260">
+  <img src="docs/images/timer-dark.png" alt="Tools widget, Timer tab, dark theme" width="260">
+  <img src="docs/images/timer-light.png" alt="Tools widget, Timer tab, light theme" width="260">
+</p>
+
+## What it does
+
+- **Groups on the desktop.** Right-drag on the desktop (or right-click › New group here) to draw a
+  named glass group. Move, resize, rename, roll it up to its title bar, sort it, or delete it —
+  deleting a group never deletes files.
+- **Drag and drop.** Move one or many icons between groups and the desktop, drop files from
+  Explorer (with a 6-second Undo), or drag icons out to other apps.
+- **Quick-hide and Peek.** Double-click empty desktop to hide everything; press the Peek shortcut
+  to bring your groups above whatever app is open.
+- **To-do list and focus timer.** A floating glass widget with a side rail: add, edit, check off
+  and reorder tasks; start, pause and stop a countdown linked to a task, with a Windows notification
+  when it ends.
+- **Your look.** Follows the Windows light/dark theme (or pick one), with sliders for glass opacity
+  and blur, accent colours, icon size, and a reduced-motion switch.
+- **Saves itself.** Layout, tasks and settings are saved automatically and restored at sign-in;
+  multi-monitor layouts survive monitors being unplugged and plugged back in.
+
+## Download and install
+
+1. Download **[Taskyard-0.1.0-setup.exe](https://github.com/Divici/Taskyard/releases/latest/download/Taskyard-0.1.0-setup.exe)**.
+2. Run it. The installer is not code-signed, so Windows SmartScreen may say _"Windows protected
+   your PC"_ — click **More info › Run anyway**.
+3. Taskyard starts and appears in the tray. Right-click the tray icon for Settings, Peek and Quit.
+
+Runs on Windows 11 (22H2 or later), x64. No admin rights, Node or other downloads needed.
+
+## How it's built
+
+Electron and React for the UI, with a thin layer of Win32 calls (through the `koffi` FFI library)
+that keeps one opaque window per monitor seated directly above Windows' own desktop window —
+through clicks, Win+D and Explorer restarts. The glass is real blur over Taskyard's own copy of
+your wallpaper, so it stays smooth while dragging. Files are tracked by NTFS file id, so renames in
+Explorer keep their placement, and every save is versioned, validated and written atomically.
+The full plan, research and decision log are in [`docs/plans/`](docs/plans/2026-09-21-taskyard/plan.md).
+
 - **Files never move.** The layout is metadata keyed by NTFS file id, so renames in Explorer keep
   their place and Explorer, other apps and Taskyard always agree about where a file is.
 - **Real glass.** Groups blur Taskyard's own copy of the wallpaper (CSS `backdrop-filter`), so the
@@ -14,9 +59,9 @@ and a focus timer.
 
 For how to use it, see [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
-## Install
+## Installer details
 
-Download or build `Taskyard-<version>-setup.exe` and run it. It is a one-click, per-user installer:
+`Taskyard-<version>-setup.exe` is a one-click, per-user installer:
 no admin prompt, installed to `%LOCALAPPDATA%\Programs\taskyard`, with a Start menu shortcut (no
 desktop shortcut) and Taskyard started when it finishes (a silent `/S` install does not start it). Taskyard runs from the tray (no taskbar
 button) and starts with Windows unless you turn that off.
