@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react'
 import { CircleAlert, CircleCheck, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { useDisplayStore } from '../../stores/display'
 import { useUiStore, type Toast, type ToastTone } from '../../stores/ui'
+import { toastPlacement } from './toast-placement'
 
 const TONES: Record<ToastTone, { icon: LucideIcon; accent: string }> = {
   info: { icon: Info, accent: 'border-l-sky-500 text-sky-600 dark:text-sky-400' },
@@ -107,19 +109,26 @@ function ToastView({
 }
 
 /**
- * Renders the ui store's toast queue. The polite status region is always mounted, so screen
- * readers announce a toast when it is added (not only the ones present at load).
+ * Renders the ui store's toast queue inside this display's work area (`toastPlacement`), never
+ * under the taskbar. The polite status region is always mounted, so screen readers announce a
+ * toast when it is added (not only the ones present at load).
  */
 export function Toaster(): React.JSX.Element {
   const toasts = useUiStore((state) => state.toasts)
   const dismissToast = useUiStore((state) => state.dismissToast)
+  const info = useDisplayStore((state) => state.info)
 
   return (
     <section
       aria-label="Notifications"
       // A click on a toast is not a click on the desktop: it does not end a Peek.
       data-peek-keep=""
-      className="pointer-events-none fixed bottom-6 left-1/2 z-50 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2"
+      style={info ? toastPlacement(info) : undefined}
+      className={cn(
+        'pointer-events-none fixed z-50 flex -translate-x-1/2 flex-col justify-end',
+        // Until main has said which display this is: the window's bottom centre.
+        !info && 'bottom-6 left-1/2 w-[min(26rem,calc(100vw-2rem))]'
+      )}
     >
       <div role="status" aria-live="polite" aria-atomic="false" aria-relevant="additions text">
         {toasts.length > 0 && (

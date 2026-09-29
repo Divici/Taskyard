@@ -17,7 +17,8 @@ export interface TimerCompletionProps {
  * Watches the countdown in the leader window, whether or not the widget is shown: when
  * tasks.json first loads, a timer that ended while Taskyard was closed becomes "finished while
  * you were away" (no alerts); afterwards a running timer that reaches zero is finished and
- * announced (toast, Windows notification, chime per Settings). Renders nothing.
+ * announced (the Windows notification or else the in-app toast, and the chime, per Settings).
+ * Renders nothing.
  */
 export function TimerCompletion({ leader }: TimerCompletionProps): null {
   const timer = useTasksStore((state) => state.timer)

@@ -1,5 +1,5 @@
 import { cn } from '../../../lib/utils'
-import { RING_RADIUS, RING_SIZE, RING_STROKE } from './ring-geometry'
+import { RING_LABEL, RING_RADIUS, RING_SIZE, RING_STROKE } from './ring-geometry'
 
 export interface ProgressRingProps {
   /** 0 (nothing left) to 1 (all of it left). */
@@ -8,6 +8,13 @@ export interface ProgressRingProps {
   finished: boolean
   /** Dimmed while paused. */
   paused: boolean
+  /** Round 2: the state word under the clock ("Ready", "Paused"); the clock stays centred. */
+  caption?: string
+  /** Eases the arc between ticks (off for the stopwatch's seconds sweep, which wraps round). */
+  animate?: boolean
+  /** The ring's test id (`timer-ring` or `stopwatch-ring`). */
+  testId?: string
+  /** The clock, centred in the ring. */
   children: React.ReactNode
 }
 
@@ -25,12 +32,15 @@ export function ProgressRing({
   progress,
   finished,
   paused,
+  caption,
+  animate = true,
+  testId = 'timer-ring',
   children
 }: ProgressRingProps): React.JSX.Element {
   const left = Math.min(1, Math.max(0, progress))
   return (
     <div
-      data-testid="timer-ring"
+      data-testid={testId}
       data-finished={finished || undefined}
       className="relative mx-auto flex shrink-0 items-center justify-center"
       style={{ width: SIZE, height: SIZE }}
@@ -63,13 +73,23 @@ export function ProgressRing({
           strokeDasharray={CIRCUMFERENCE}
           strokeDashoffset={finished ? 0 : CIRCUMFERENCE * (1 - left)}
           className={cn(
-            'stroke-accent-1 transition-[stroke-dashoffset,opacity] duration-[250ms] ease-linear',
+            'stroke-accent-1',
+            animate && 'transition-[stroke-dashoffset,opacity] duration-[250ms] ease-linear',
             paused && 'opacity-50'
           )}
           style={{ filter: 'drop-shadow(0 0 6px var(--accent-1))' }}
         />
       </svg>
-      <div className="relative flex flex-col items-center">{children}</div>
+      <div className="absolute inset-0 flex items-center justify-center">{children}</div>
+      {caption && (
+        <p
+          title={caption}
+          style={{ top: RING_SIZE / 2 + RING_LABEL.top, maxWidth: RING_LABEL.maxWidth }}
+          className="absolute left-1/2 w-max -translate-x-1/2 truncate text-center text-[11px] leading-4 text-text-tertiary"
+        >
+          {caption}
+        </p>
+      )}
     </div>
   )
 }

@@ -5,11 +5,15 @@ import type { Rect, ToolsState } from '@shared/schema'
 
 export type ToolId = ToolsState['activeTool']
 
-/** The rail's order, top to bottom. */
-export const TOOL_IDS: readonly ToolId[] = ['tasks', 'timer']
+/** The tabs' order, left to right. */
+export const TOOL_IDS: readonly ToolId[] = ['tasks', 'timer', 'stopwatch']
 
-/** Each tool's name: the rail tab's label and the header title while it is active. */
-export const TOOL_LABELS: Readonly<Record<ToolId, string>> = { tasks: 'Tasks', timer: 'Timer' }
+/** Each tool's name: its tab's label and the header title while it is active. */
+export const TOOL_LABELS: Readonly<Record<ToolId, string>> = {
+  tasks: 'Tasks',
+  timer: 'Timer',
+  stopwatch: 'Stopwatch'
+}
 
 /** The widget never gets smaller than this (resize stops here). */
 export const TOOLS_MIN_SIZE: Readonly<Size> = { width: 280, height: 220 }

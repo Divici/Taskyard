@@ -13,6 +13,7 @@ and a focus timer.
   <img src="docs/images/tasks-dark.png" alt="Tools widget, Tasks tab, dark theme" width="260">
   <img src="docs/images/timer-dark.png" alt="Tools widget, Timer tab, dark theme" width="260">
   <img src="docs/images/timer-light.png" alt="Tools widget, Timer tab, light theme" width="260">
+  <img src="docs/images/stopwatch-dark.png" alt="Tools widget, Stopwatch tab with laps, dark theme" width="260">
 </p>
 
 ## What it does
@@ -26,9 +27,10 @@ and a focus timer.
   Explorer (with a 6-second Undo), or drag icons out to other apps.
 - **Quick-hide and Peek.** Double-click empty desktop to hide everything; press the Peek shortcut
   to bring your groups above whatever app is open.
-- **To-do list and focus timer.** A floating glass widget with a side rail: add, edit, check off
-  and reorder tasks; start, pause and stop a countdown linked to a task, with a Windows notification
-  when it ends.
+- **To-do list, focus timer and stopwatch.** A floating glass widget with Tasks · Timer · Stopwatch
+  tabs along its top: add (Enter or the + button), edit, check off and reorder tasks; start, pause
+  and stop a countdown linked to a task, with a Windows notification when it ends and an inline
+  Mark done; time anything with a stopwatch that keeps laps and keeps running across restarts.
 - **Your look.** Follows the Windows light/dark theme (or pick one), with sliders for glass opacity
   and blur, accent colours, icon size, and a reduced-motion switch.
 - **Saves itself.** Layout, tasks and settings are saved automatically and restored at sign-in;

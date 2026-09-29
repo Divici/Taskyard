@@ -20,9 +20,13 @@ describe('timer ring geometry', () => {
     expect(innerChordWidth(RING_INNER_RADIUS + 5)).toBe(0)
   })
 
-  it('the "Focus: <task>" label stays inside the ring at its lowest edge, with breathing room', () => {
-    // The label's bottom edge sits `bottom` px below the centre of the ring.
-    const { maxWidth, bottom, padding } = RING_LABEL
+  it('round 2: the state caption sits under the centred clock and inside the ring', () => {
+    // The clock is centred in the ring (34 px type on a ~41 px line: 21 px above and below the centre); the
+    // caption's 16 px line starts `top` px below the centre, so it never overlaps the clock.
+    const { maxWidth, top, bottom, padding } = RING_LABEL
+    expect(top).toBeGreaterThanOrEqual(21)
+    expect(bottom).toBe(top + 16)
+    // At its lowest edge it still fits inside the stroke, with breathing room on both sides.
     expect(maxWidth + 2 * padding).toBeLessThanOrEqual(innerChordWidth(bottom))
   })
 })

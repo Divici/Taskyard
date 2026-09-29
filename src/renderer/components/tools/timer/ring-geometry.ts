@@ -1,8 +1,8 @@
-// The timer ring's geometry, shared by the ring (ProgressRing.tsx) and the label inside it
-// (TimerTool.tsx), so the "Focus: <task>" line is sized from the circle rather than guessed.
+// The ring's geometry, shared by the ring (ProgressRing.tsx) and the state caption inside it, so
+// the caption is sized from the circle rather than guessed. Used by the Timer and the Stopwatch.
 
 /** Outer box of the ring, CSS px. */
-export const RING_SIZE = 148
+export const RING_SIZE = 128
 export const RING_STROKE = 6
 /** Radius of the arc's centre line (6 px of room for the glow). */
 export const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2 - 6
@@ -17,8 +17,9 @@ export function innerChordWidth(offset: number): number {
 }
 
 /**
- * The status line under the countdown ("Focus: Write report", "Paused"). Its bottom edge sits
- * about 32 px below the ring's centre (a 44 px clock line, 2 px gap, a 16 px label line, centred
- * together); `padding` keeps it clear of the stroke's inner edge on both sides.
+ * Round 2: the state caption under the clock ("Ready", "Paused", "Time’s up"). The clock stays
+ * centred in the ring (34 px type on a ~41 px line: about 21 px either side of the centre); the caption's 16 px
+ * line starts `top` px below the centre and ends `bottom` px below it, and `padding` keeps it
+ * clear of the stroke's inner edge on both sides. The "Focus: <task>" line lives under the ring.
  */
-export const RING_LABEL = { maxWidth: 92, bottom: 32, padding: 6 } as const
+export const RING_LABEL = { maxWidth: 60, top: 21, bottom: 37, padding: 6 } as const

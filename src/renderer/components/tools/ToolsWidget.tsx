@@ -1,7 +1,6 @@
 import { useId, useRef, useState } from 'react'
 import { GROUP_HEADER_HEIGHT } from '@shared/group-metrics'
-import type { Rect, TimerState } from '@shared/schema'
-import { formatClock } from '@shared/timer-state'
+import type { Rect } from '@shared/schema'
 import { openMenuFromKey } from '../../lib/context-menu-key'
 import { cn } from '../../lib/utils'
 import { useLayoutStore } from '../../stores/layout'
@@ -10,10 +9,12 @@ import { useTasksStore } from '../../stores/tasks'
 import { GroupHeader } from '../group/GroupHeader'
 import { ResizeHandles } from '../group/ResizeHandles'
 import { useGroupDrag } from '../group/useGroupDrag'
+import { headerClockFor } from './header-clock'
+import { StopwatchHeaderClock, TimerHeaderClock } from './HeaderClock'
+import { StopwatchTool } from './stopwatch/StopwatchTool'
 import { TimerTool } from './timer/TimerTool'
-import { useTimerTick } from './timer/useTimerTick'
 import { TodoTool } from './todo/TodoTool'
-import { ToolRail } from './ToolRail'
+import { ToolTabs } from './ToolTabs'
 import { ToolsContextMenu } from './ToolsContextMenu'
 import { patchTools, TOOL_LABELS, TOOLS_MIN_SIZE, toolsRect, type ToolId } from './tools-geometry'
 
@@ -27,31 +28,19 @@ export interface ToolsWidgetProps {
   hidden?: boolean
 }
 
-/** The remaining time in the header while a countdown is in progress (it ticks on its own). */
-function HeaderTime({ timer }: { timer: TimerState }): React.JSX.Element {
-  const remaining = useTimerTick(timer)
-  return (
-    <span
-      role="timer"
-      aria-live="off"
-      aria-label="Time left"
-      className={cn(
-        'shrink-0 rounded-full px-2 py-0.5 text-[12px] font-semibold text-accent-1 tabular-nums',
-        'bg-accent-1/10 shadow-[0_0_10px_color-mix(in_srgb,var(--accent-1)_30%,transparent)]',
-        timer.status === 'paused' && 'opacity-60'
-      )}
-    >
-      {formatClock(remaining)}
-    </span>
-  )
+const TOOL_VIEWS: Readonly<Record<ToolId, () => React.JSX.Element>> = {
+  tasks: TodoTool,
+  timer: TimerTool,
+  stopwatch: StopwatchTool
 }
 
 /**
  * The floating tools widget (Decision 6 + its 2026-09-23 extension): the group chrome — title
- * bar drag, 8 resize handles (min 280 × 220), roll-up, quick-hide — around a side tool rail and
- * the active tool (Tasks or Timer). Its rect, roll-up and active tool are saved per display
- * (layout `tools`); moves and resizes preview locally and save once, on release. The header
- * names the active tool; rolled up (or on the Tasks tool) it shows the countdown's time left.
+ * bar drag, 8 resize handles (min 280 × 220), roll-up, quick-hide — around the tab switcher at
+ * the top (round 2: Tasks · Timer · Stopwatch, centred) and the active tool under it. Its rect,
+ * roll-up and active tool are saved per display (layout `tools`); moves and resizes preview
+ * locally and save once, on release. The header names the active tool and shows a clock per
+ * `headerClockFor` (the countdown's time left, or rolled up on the Stopwatch tab the stopwatch).
  */
 export function ToolsWidget({
   displayId,
@@ -63,6 +52,7 @@ export function ToolsWidget({
     (state) => state.layout.displays.find((display) => display.displayId === displayId)?.tools
   )
   const timer = useTasksStore((state) => state.timer)
+  const stopwatch = useTasksStore((state) => state.stopwatch)
   const snap = useSettingsStore((state) => state.settings.gridSnap)
   const [draft, setDraft] = useState<Rect | null>(null)
   const [resizing, setResizing] = useState(false)
@@ -87,8 +77,8 @@ export function ToolsWidget({
   if (!tools) return null
   const rect = draft ?? saved
   const active: ToolId = tools.activeTool
-  const counting = timer.status === 'running' || timer.status === 'paused'
-  const showTime = counting && (tools.rolledUp || active !== 'timer')
+  const clock = headerClockFor(active, tools.rolledUp, timer, stopwatch)
+  const ActiveTool = TOOL_VIEWS[active]
 
   const openMenu = (anchor: DOMRect): void => {
     element.current?.dispatchEvent(
@@ -139,23 +129,27 @@ export function ToolsWidget({
           onOpenMenu={openMenu}
           menuLabel="Tools options"
         >
-          {showTime && <HeaderTime timer={timer} />}
+          {clock === 'timer' && <TimerHeaderClock timer={timer} />}
+          {clock === 'stopwatch' && <StopwatchHeaderClock stopwatch={stopwatch} />}
         </GroupHeader>
         {!tools.rolledUp && (
-          <div className="flex min-h-0 flex-1 gap-3 p-3 pl-2.5">
-            <ToolRail
+          <div className="flex min-h-0 flex-1 flex-col gap-2.5 px-3 pt-2.5 pb-3">
+            <ToolTabs
               active={active}
               onChange={(tool) => update({ activeTool: tool })}
-              timerRunning={timer.status === 'running'}
+              running={{
+                timer: timer.status === 'running',
+                stopwatch: stopwatch.status === 'running'
+              }}
               idPrefix={idPrefix}
             />
             <div
               role="tabpanel"
               id={`${idPrefix}-panel`}
               aria-labelledby={`${idPrefix}-tab-${active}`}
-              className="min-h-0 min-w-0 flex-1"
+              className="min-h-0 w-full min-w-0 flex-1"
             >
-              {active === 'tasks' ? <TodoTool /> : <TimerTool />}
+              <ActiveTool />
             </div>
           </div>
         )}

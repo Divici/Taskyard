@@ -1,4 +1,4 @@
-import type { Task, TasksFile, TimerState } from './schema'
+import type { StopwatchState, Task, TasksFile, TimerState } from './schema'
 
 // Pure changes to tasks.json. The renderer's sync client replays them on newer data whenever
 // another window saved first (src/shared/sync-doc.ts), so each one works on the file it is
@@ -12,7 +12,11 @@ export type NewTask = Omit<Task, 'order'>
 /** Fields of a task to change; a field set to `undefined` is removed (e.g. `completedAt`). */
 export type TaskPatch = Partial<Omit<Task, 'id'>>
 
-function withoutLink(timer: TimerState, removed: ReadonlySet<string>): TimerState {
+/** The timer or stopwatch without its link to a removed task (the same object otherwise). */
+function withoutLink<T extends TimerState | StopwatchState>(
+  timer: T,
+  removed: ReadonlySet<string>
+): T {
   if (timer.linkedTaskId === undefined || !removed.has(timer.linkedTaskId)) return timer
   const next = { ...timer }
   delete next.linkedTaskId
@@ -24,7 +28,8 @@ function removeTasks(file: TasksFile, ids: ReadonlySet<string>): TasksFile {
   return {
     ...file,
     tasks: file.tasks.filter((task) => !ids.has(task.id)),
-    timer: withoutLink(file.timer, ids)
+    timer: withoutLink(file.timer, ids),
+    stopwatch: withoutLink(file.stopwatch, ids)
   }
 }
 
@@ -103,4 +108,13 @@ export function clearCompleted(file: TasksFile): TasksFile {
 export function updateTimer(file: TasksFile, update: (timer: TimerState) => TimerState): TasksFile {
   const timer = update(file.timer)
   return timer === file.timer ? file : { ...file, timer }
+}
+
+/** Round 2: applies `update` to the stopwatch of the file it is replayed on. */
+export function updateStopwatch(
+  file: TasksFile,
+  update: (stopwatch: StopwatchState) => StopwatchState
+): TasksFile {
+  const stopwatch = update(file.stopwatch)
+  return stopwatch === file.stopwatch ? file : { ...file, stopwatch }
 }

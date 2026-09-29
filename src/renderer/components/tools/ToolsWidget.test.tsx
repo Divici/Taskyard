@@ -2,8 +2,8 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { axe } from 'vitest-axe'
-import { defaultTimer, emptyTasks } from '@shared/defaults'
-import type { TimerState, ToolsState } from '@shared/schema'
+import { defaultStopwatch, defaultTimer, emptyTasks } from '@shared/defaults'
+import type { StopwatchState, TimerState, ToolsState } from '@shared/schema'
 import { PEEK_KEEP_SELECTOR } from '../../lib/peek-sync'
 import { useLayoutStore } from '../../stores/layout'
 import { useTasksStore } from '../../stores/tasks'
@@ -26,7 +26,8 @@ function currentTools(): ToolsState {
 function renderWidget(
   tools: Partial<ToolsState> = {},
   timer: Partial<TimerState> = {},
-  hidden = false
+  hidden = false,
+  stopwatch: Partial<StopwatchState> = {}
 ): { region: HTMLElement; user: ReturnType<typeof userEvent.setup>; container: HTMLElement } {
   installFakeBridge()
   seedCanvas()
@@ -36,7 +37,11 @@ function renderWidget(
       .updateTools(1, (current) => ({ ...current, x: 200, y: 120, w: 320, h: 400, ...tools }))
     useTasksStore.getState().receive({
       revision: 1,
-      data: { ...emptyTasks(), timer: { ...defaultTimer(), ...timer } }
+      data: {
+        ...emptyTasks(),
+        timer: { ...defaultTimer(), ...timer },
+        stopwatch: { ...defaultStopwatch(), ...stopwatch }
+      }
     })
   })
   const { container } = render(
@@ -66,7 +71,7 @@ describe('ToolsWidget', () => {
     expect(await axe(container)).toHaveNoViolations()
   })
 
-  it('the rail switches tools, and the active tool is saved per display', async () => {
+  it('the tabs switch tools, and the active tool is saved per display', async () => {
     const { region, user } = renderWidget()
 
     await user.click(within(region).getByRole('tab', { name: 'Timer' }))
@@ -78,6 +83,83 @@ describe('ToolsWidget', () => {
 
     await user.click(within(region).getByRole('tab', { name: 'Tasks' }))
     expect(within(region).getByRole('heading', { name: 'Tasks' })).toBeVisible()
+
+    await user.click(within(region).getByRole('tab', { name: 'Stopwatch' }))
+    expect(within(region).getByRole('heading', { name: 'Stopwatch' })).toBeVisible()
+    expect(within(region).getByRole('tabpanel', { name: 'Stopwatch' })).toBeVisible()
+    expect(within(region).getByRole('timer', { name: 'Elapsed time' })).toHaveTextContent(
+      '0:00:00.0'
+    )
+    expect(currentTools().activeTool).toBe('stopwatch')
+  })
+
+  it('round 2: the tabs sit at the top of the widget, centred, with the tool under them', () => {
+    const { region } = renderWidget()
+
+    const tablist = within(region).getByRole('tablist', { name: 'Tools' })
+    const panel = within(region).getByRole('tabpanel')
+    const body = tablist.parentElement!
+    // One column: the tabs first, then the tool (no side rail beside it).
+    expect(body).toBe(panel.parentElement)
+    expect(body).toHaveClass('flex-col')
+    expect(body.firstElementChild).toBe(tablist)
+    expect(tablist).toHaveAttribute('aria-orientation', 'horizontal')
+    expect(tablist).toHaveClass('mx-auto')
+  })
+
+  it('round 2: both counting tools wear the running dot on their tab', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(T0)
+    const { region } = renderWidget({}, { status: 'running', endsAt: T0 + 60_000 }, false, {
+      status: 'running',
+      startedAt: T0
+    })
+
+    expect(within(region).getByRole('tab', { name: 'Timer' })).toHaveAccessibleDescription(
+      'Running'
+    )
+    expect(within(region).getByRole('tab', { name: 'Stopwatch' })).toHaveAccessibleDescription(
+      'Running'
+    )
+  })
+
+  it('round 2: rolled up on the Stopwatch tab, the header shows the running stopwatch', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(T0)
+    const { region } = renderWidget({ rolledUp: true, activeTool: 'stopwatch' }, {}, false, {
+      status: 'running',
+      startedAt: T0 - 65_000
+    })
+
+    const header = within(region).getByRole('timer', { name: 'Elapsed time' })
+    expect(header).toHaveTextContent('0:01:05.0')
+    act(() => {
+      vi.advanceTimersByTime(2_300)
+    })
+    expect(header).toHaveTextContent('0:01:07.3')
+  })
+
+  it('round 2: rolled up on another tab, a running stopwatch stays out of the header', () => {
+    const { region } = renderWidget({ rolledUp: true, activeTool: 'tasks' }, {}, false, {
+      status: 'running',
+      startedAt: Date.now()
+    })
+
+    expect(within(region).queryByRole('timer')).toBeNull()
+  })
+
+  it('round 2: rolled up with both counting, the timer keeps the header', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(T0)
+    const { region } = renderWidget(
+      { rolledUp: true, activeTool: 'stopwatch' },
+      { status: 'running', endsAt: T0 + 754_000 },
+      false,
+      { status: 'running', startedAt: T0 - 5_000 }
+    )
+
+    expect(within(region).getAllByRole('timer')).toHaveLength(1)
+    expect(within(region).getByRole('timer', { name: 'Time left' })).toHaveTextContent('12:34')
   })
 
   it('double-clicking the title rolls it up to its header (the width is kept)', async () => {

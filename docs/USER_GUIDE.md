@@ -57,16 +57,29 @@ your Desktop folder; an **Undo** toast gives you 6 seconds to take it back.
   your groups over every open window. The taskbar stays usable on top. Peek ends when you click
   empty desktop, switch to another app, press the shortcut again, or after 8 seconds idle.
 
-## Tools widget: tasks and timer
+## Tools widget: tasks, timer and stopwatch
 
-The floating widget has a tool rail on its left.
+The floating widget has three tabs along its top: **Tasks · Timer · Stopwatch**. Click one, or
+focus the tabs and use **←**/**→** (**Home**/**End** jump to the first or last). A glowing dot on
+the Timer or Stopwatch tab means it is running.
 
-- **Tasks**: type in **Add a task** and press **Enter**. Tick a task to complete it; completed
-  tasks collapse under **Completed**. Double-click a task to edit it, drag the handle to reorder.
+- **Tasks**: click anywhere on the **Add a task…** row, type, then press **Enter** or click the
+  round **+** button (it lights up once there is text). The field stays ready for the next task.
+  Tick a task to complete it; completed tasks collapse under **Completed**. Double-click a task to
+  edit it, drag the handle to reorder.
 - **Timer**: presets of 5, 15, 25 and 45 minutes or a custom 1–180 minutes; **Start**, **Pause**,
   **Resume**, **Stop**. **Space** starts or pauses while the timer has focus. Link a task with
-  **Focus on…**; when the countdown ends you get a chime and a Windows notification (both can be
-  turned off in Settings) and can mark the task done.
+  **Focus on…**; it shows as **Focus: <task>** under the ring (hover it for the full name).
+- **When the countdown ends**: the ring pulses, a chime plays (Settings › timer sound) and a Windows
+  notification appears by the clock (Settings › timer notification). With the notification turned
+  off — or if Windows cannot show it — a small Taskyard pop-up appears above the taskbar instead.
+  With a linked task, the timer offers **Mark done**; once the task is done it shows **Done ✓** with
+  **Undo**, and it always follows the task: untick it in Tasks and **Mark done** comes back.
+- **Stopwatch**: **Start**, **Pause**, **Resume**, **Reset** and **Lap**. Laps list newest first
+  with each lap's split and running total (the latest 50 are kept). It shows `h:mm:ss.t` and keeps
+  counting while Taskyard is closed or the PC sleeps. **Space** starts or pauses while it has focus,
+  and **Focus on…** links a task like the timer. Rolled up on the Stopwatch tab, the widget's title
+  bar shows the running time (a running countdown takes priority).
 
 Move, resize and roll up the widget like a group. Hide it from its menu, the desktop menu or the
 tray; turn it off entirely in Settings.

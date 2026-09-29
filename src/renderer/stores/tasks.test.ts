@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DEFAULT_TIMER, emptyTasks } from '@shared/defaults'
+import { DEFAULT_STOPWATCH, DEFAULT_TIMER, emptyTasks } from '@shared/defaults'
 import type { Task, TasksFile } from '@shared/schema'
 import { FakeMain } from '@shared/test/fake-main'
 import { SCHEMA_VERSION } from '@shared/version'
@@ -28,7 +28,10 @@ describe('tasks store', () => {
     const store = createTasksStore()
     const running = { ...DEFAULT_TIMER, status: 'running' as const, endsAt: 99 }
 
-    store.getState().receive({ revision: 1, data: { version: 1, tasks: [task], timer: running } })
+    store.getState().receive({
+      revision: 1,
+      data: { version: 1, tasks: [task], timer: running, stopwatch: DEFAULT_STOPWATCH }
+    })
 
     expect(store.getState().tasks).toEqual([task])
     expect(store.getState().timer).toEqual(running)
@@ -45,7 +48,12 @@ describe('tasks store', () => {
     await vi.waitFor(() =>
       expect(bridge.storage.save).toHaveBeenCalledExactlyOnceWith('tasks', {
         baseRevision: 1,
-        data: { version: SCHEMA_VERSION, tasks: [task], timer: DEFAULT_TIMER }
+        data: {
+          version: SCHEMA_VERSION,
+          tasks: [task],
+          timer: DEFAULT_TIMER,
+          stopwatch: DEFAULT_STOPWATCH
+        }
       })
     )
   })
@@ -63,10 +71,56 @@ describe('tasks store', () => {
         data: {
           version: SCHEMA_VERSION,
           tasks: [task],
-          timer: { ...DEFAULT_TIMER, status: 'paused', remainingMs: 60_000 }
+          timer: { ...DEFAULT_TIMER, status: 'paused', remainingMs: 60_000 },
+          stopwatch: DEFAULT_STOPWATCH
         }
       })
     )
+  })
+
+  it('round 2: receives the stopwatch; updateStopwatch persists it with the tasks and timer', async () => {
+    const bridge = installFakeBridge()
+    const store = createTasksStore()
+    const running = { ...DEFAULT_STOPWATCH, status: 'running' as const, startedAt: 5 }
+    store.getState().receive({ revision: 1, data: { ...emptyTasks(), stopwatch: running } })
+    expect(store.getState().stopwatch).toEqual(running)
+
+    store.getState().updateStopwatch((watch) => ({ ...watch, accumulatedMs: 1_000 }))
+
+    expect(store.getState().stopwatch).toEqual({ ...running, accumulatedMs: 1_000 })
+    await vi.waitFor(() =>
+      expect(bridge.storage.save).toHaveBeenCalledExactlyOnceWith('tasks', {
+        baseRevision: 1,
+        data: { ...emptyTasks(), stopwatch: { ...running, accumulatedMs: 1_000 } }
+      })
+    )
+  })
+
+  it('round 2: a stopwatch change in one window and a timer change in another both survive', async () => {
+    const { main, a, b } = twoWindows()
+
+    a.getState().updateStopwatch((watch) => ({ ...watch, accumulatedMs: 2_000 }))
+    b.getState().updateTimer((timer) => ({ ...timer, durationMs: 300_000 }))
+    await main.settle('lifo')
+
+    expect(main.data.stopwatch.accumulatedMs).toBe(2_000)
+    expect(main.data.timer.durationMs).toBe(300_000)
+    expect(a.getState().stopwatch).toEqual(main.data.stopwatch)
+  })
+
+  it('round 2: setDone sets the wanted state (a repeat or stale call never flips it back)', () => {
+    installFakeBridge()
+    const store = createTasksStore()
+    store.getState().receive({ revision: 1, data: { ...emptyTasks(), tasks: [task] } })
+
+    store.getState().setDone('t-1', true)
+    store.getState().setDone('t-1', true)
+    expect(store.getState().tasks[0]).toMatchObject({ done: true })
+
+    store.getState().setDone('t-1', false)
+    store.getState().setDone('t-1', false)
+    expect(store.getState().tasks[0].done).toBe(false)
+    expect('completedAt' in store.getState().tasks[0]).toBe(false)
   })
 
   it('offers no whole-list or whole-timer replacement', () => {

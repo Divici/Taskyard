@@ -4,7 +4,7 @@ import { useTasksStore } from '../../../stores/tasks'
 import { useUiStore } from '../../../stores/ui'
 import { playChime } from './chime'
 
-/** The finished-timer toast stays this long (ms). */
+/** The in-app finished-timer toast (timerNotify off, or Windows could not notify) stays this long (ms). */
 export const TIMER_TOAST_MS = 10_000
 export const TIMER_TOAST_ID = 'timer-finished'
 
@@ -20,15 +20,8 @@ export function finishedDescription(task?: Pick<Task, 'text'>): string | undefin
   return task ? `Time’s up for “${task.text}”.` : undefined
 }
 
-/**
- * A countdown just reached zero while Taskyard was running: the toast (with "Mark done" for an
- * open linked task), the Windows notification when Settings › timerNotify, and the chime when
- * Settings › timerSound. Only the leader window calls this (TimerCompletion), so it happens once.
- */
-export function announceTimerFinished(
-  { endsAt, task }: FinishedTimer,
-  settings: Pick<SettingsFile, 'timerNotify' | 'timerSound'>
-): void {
+/** The in-app "Timer finished" toast, with "Mark done" for an open linked task. */
+function pushFinishedToast(task: Task | undefined): void {
   const description = finishedDescription(task)
   useUiStore.getState().pushToast({
     id: TIMER_TOAST_ID,
@@ -40,19 +33,37 @@ export function announceTimerFinished(
       ? {
           action: {
             label: 'Mark done',
-            onAction: () => {
-              const current = useTasksStore.getState().tasks.find((entry) => entry.id === task.id)
-              if (current && !current.done) useTasksStore.getState().toggle(task.id)
-            }
+            // Sets done (never toggles): a task completed meanwhile stays completed.
+            onAction: () => useTasksStore.getState().setDone(task.id, true)
           }
         }
       : {})
   })
+}
 
+/**
+ * A countdown just reached zero while Taskyard was running. Round 2: one pop-up, not two — the
+ * Windows notification when Settings › timerNotify (bottom-right, by the clock), otherwise the
+ * in-app toast; the toast also stands in when Windows could not show the notification. The
+ * chime plays when Settings › timerSound; the widget's ring pulse and its inline "Mark done"
+ * need nothing from here. Only the leader window calls this (TimerCompletion), so it happens once.
+ */
+export function announceTimerFinished(
+  { endsAt, task }: FinishedTimer,
+  settings: Pick<SettingsFile, 'timerNotify' | 'timerSound'>
+): void {
   if (settings.timerNotify) {
     getBridge()
       .timer.notify({ endsAt, ...(task ? { taskText: task.text } : {}) })
-      .catch((error: unknown) => console.error('timer: the Windows notification failed', error))
+      .then((shown) => {
+        if (!shown) pushFinishedToast(task)
+      })
+      .catch((error: unknown) => {
+        console.error('timer: the Windows notification failed', error)
+        pushFinishedToast(task)
+      })
+  } else {
+    pushFinishedToast(task)
   }
   if (settings.timerSound) void playChime()
 }

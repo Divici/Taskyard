@@ -161,20 +161,16 @@ describe('TimerTool', () => {
     expect(clock()).toBe('1:30:00')
   })
 
-  it('completion fires the toast, the Windows notification and the chime', async () => {
+  it('round 2: completion raises the Windows notification and the chime, not an in-app toast', async () => {
     const { bridge } = setup({
       timer: { status: 'running', endsAt: T0 + 2_000, linkedTaskId: 't' },
       tasks: [task('t', 'Write report')]
     })
 
     advance(2_250)
+    await act(async () => {})
 
-    expect(useUiStore.getState().toasts).toEqual([
-      expect.objectContaining({
-        message: 'Timer finished',
-        description: 'Time’s up for “Write report”.'
-      })
-    ])
+    expect(useUiStore.getState().toasts).toEqual([])
     expect(bridge.timer.notify).toHaveBeenCalledExactlyOnceWith({
       endsAt: T0 + 2_000,
       taskText: 'Write report'
@@ -186,17 +182,42 @@ describe('TimerTool', () => {
     expect(useTasksStore.getState().timer.status).toBe('finished')
   })
 
-  it('completion skips the notification and the chime when Settings turn them off', () => {
-    const { bridge } = setup({
-      timer: { status: 'running', endsAt: T0 + 1_000 },
+  it('with the Windows notification off, completion shows the in-app toast instead (no chime when off)', async () => {
+    const { bridge, user } = setup({
+      timer: { status: 'running', endsAt: T0 + 1_000, linkedTaskId: 't' },
+      tasks: [task('t', 'Write report')],
       settings: { timerSound: false, timerNotify: false }
     })
 
     advance(1_250)
 
-    expect(useUiStore.getState().toasts).toHaveLength(1)
+    expect(useUiStore.getState().toasts).toEqual([
+      expect.objectContaining({
+        message: 'Timer finished',
+        description: 'Time’s up for “Write report”.',
+        action: expect.objectContaining({ label: 'Mark done' })
+      })
+    ])
     expect(bridge.timer.notify).not.toHaveBeenCalled()
     expect(playChime).not.toHaveBeenCalled()
+    // The toast's "Mark done" and the widget's agree: both follow the task's state.
+    act(() => useUiStore.getState().toasts[0].action?.onAction())
+    expect(useTasksStore.getState().tasks[0].done).toBe(true)
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(useTasksStore.getState().tasks[0].done).toBe(false)
+  })
+
+  it('round 2: when Windows cannot show the notification, the in-app toast shows instead', async () => {
+    const { bridge } = setup({ timer: { status: 'running', endsAt: T0 + 1_000 } })
+    bridge.timer.notify.mockResolvedValueOnce(false)
+
+    advance(1_250)
+    await act(async () => {})
+
+    expect(bridge.timer.notify).toHaveBeenCalledOnce()
+    expect(useUiStore.getState().toasts).toEqual([
+      expect.objectContaining({ message: 'Timer finished' })
+    ])
   })
 
   it('only the leader window (the primary display) raises the alerts', () => {
@@ -222,6 +243,33 @@ describe('TimerTool', () => {
 
     expect(useTasksStore.getState().tasks[0]).toMatchObject({ done: true })
     expect(screen.queryByRole('button', { name: 'Mark done' })).toBeNull()
+    expect(screen.getByText('Done ✓')).toBeVisible()
+  })
+
+  it('round 2: the inline action follows the linked task — done, unchecked in Tasks, done again', async () => {
+    const { user } = setup({
+      timer: { status: 'finished', linkedTaskId: 't' },
+      tasks: [task('t', 'Write report'), task('u', 'Other', { order: 1 })]
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Mark done' }))
+    expect(screen.getByText('Done ✓')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeVisible()
+
+    // Unchecked in the Tasks tool (or another window): the action is "Mark done" again.
+    act(() => useTasksStore.getState().toggle('t'))
+    expect(screen.queryByText('Done ✓')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Mark done' })).toBeVisible()
+
+    // Checked elsewhere meanwhile: the widget follows.
+    act(() => useTasksStore.getState().toggle('t'))
+    expect(screen.queryByRole('button', { name: 'Mark done' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(useTasksStore.getState().tasks.find((t) => t.id === 't')?.done).toBe(false)
+    await user.click(screen.getByRole('button', { name: 'Mark done' }))
+    expect(useTasksStore.getState().tasks.find((t) => t.id === 't')?.done).toBe(true)
   })
 
   it('a timer that ended while the app was closed shows the finished state, not a negative count', () => {
@@ -334,15 +382,37 @@ describe('TimerTool', () => {
     advance(60_000)
     expect(live).toHaveTextContent('Timer finished')
   })
-  it('Phase 12: a long "Focus: <task>" label is cut short inside the ring, with the full text as its title', () => {
+
+  it('round 2: "Focus: <task>" is one truncated line under the ring; the ring holds the clock and state', () => {
     const text = 'Write the quarterly report for the board and send it to everyone involved'
     setup({
       tasks: [{ id: 't', text, done: false, order: 0, createdAt: 1 }],
-      timer: { linkedTaskId: 't' }
+      timer: { linkedTaskId: 't', status: 'running', endsAt: T0 + 60_000 }
     })
+    const ring = screen.getByTestId('timer-ring')
     const label = screen.getByText(`Focus: ${text}`)
+    expect(ring).not.toContainElement(label)
     expect(label).toHaveClass('truncate')
-    expect(label).toHaveStyle({ maxWidth: `${RING_LABEL.maxWidth}px` })
     expect(label).toHaveAttribute('title', `Focus: ${text}`)
+    // Inside the ring: the clock and a short state caption, sized to stay inside the stroke.
+    expect(within(ring).getByRole('timer')).toHaveTextContent('01:00')
+    expect(within(ring).getByText('Running')).toHaveStyle({
+      maxWidth: `${RING_LABEL.maxWidth}px`
+    })
+  })
+
+  it('round 2: ring, focus line, buttons, presets and fields share one centre line', () => {
+    setup({ tasks: [task('t', 'Write report')], timer: { linkedTaskId: 't' } })
+    const view = screen.getByRole('group', { name: 'Timer' })
+
+    expect(view).toHaveClass('flex-col', 'items-center')
+    const rows = [
+      screen.getByTestId('timer-ring'),
+      screen.getByText('Focus: Write report'),
+      screen.getByRole('button', { name: 'Start' }).parentElement!,
+      screen.getByRole('group', { name: 'Presets' }),
+      screen.getByRole('spinbutton', { name: 'Custom minutes' }).closest('[data-timer-fields]')!
+    ]
+    for (const row of rows) expect(row.parentElement).toBe(view)
   })
 })

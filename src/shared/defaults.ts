@@ -8,6 +8,7 @@ import type {
   OpsJournalFile,
   Rect,
   SettingsFile,
+  StopwatchState,
   TasksFile,
   TimerState,
   ToolsState
@@ -59,6 +60,15 @@ export const DEFAULT_TIMER: Readonly<TimerState> = {
   presetsMs: [...TIMER_PRESETS_MS]
 }
 
+/** Round 2: the stopwatch keeps at most this many laps (the oldest drop off). */
+export const STOPWATCH_MAX_LAPS = 50
+
+export const DEFAULT_STOPWATCH: Readonly<StopwatchState> = {
+  status: 'idle',
+  accumulatedMs: 0,
+  laps: []
+}
+
 export const DEFAULT_TOOLS: Readonly<ToolsState> = { ...TOOLS_VALUES }
 
 export const DEFAULT_SETTINGS: Readonly<SettingsFile> = {
@@ -74,12 +84,21 @@ export function defaultTimer(): TimerState {
   return { ...DEFAULT_TIMER, presetsMs: [...TIMER_PRESETS_MS] }
 }
 
+export function defaultStopwatch(): StopwatchState {
+  return { ...DEFAULT_STOPWATCH, laps: [] }
+}
+
 export function emptyLayout(): LayoutFile {
   return { version: SCHEMA_VERSION, displays: [], paths: {}, lastSeen: {} }
 }
 
 export function emptyTasks(): TasksFile {
-  return { version: SCHEMA_VERSION, tasks: [], timer: defaultTimer() }
+  return {
+    version: SCHEMA_VERSION,
+    tasks: [],
+    timer: defaultTimer(),
+    stopwatch: defaultStopwatch()
+  }
 }
 
 export function emptyJournal(): OpsJournalFile {

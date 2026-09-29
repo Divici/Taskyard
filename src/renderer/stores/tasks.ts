@@ -1,13 +1,14 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import { emptyTasks } from '@shared/defaults'
 import type { StoreSnapshot } from '@shared/ipc'
-import type { Task, TimerState } from '@shared/schema'
+import type { StopwatchState, Task, TimerState } from '@shared/schema'
 import {
   addTask,
   clearCompleted,
   removeTask,
   reorderTasks,
   setTaskDone,
+  updateStopwatch,
   updateTask,
   updateTimer,
   type NewTask,
@@ -32,6 +33,8 @@ export function cleanTaskText(text: string): string | null {
 export interface TasksState {
   tasks: Task[]
   timer: TimerState
+  /** Round 2: the stopwatch (tasks.json's `stopwatch`). */
+  stopwatch: StopwatchState
   hydrated: boolean
   /** Main's tasks file at a revision: the loaded file or a `storage:changed` event. Never saves. */
   receive(snapshot: StoreSnapshot<'tasks'>): void
@@ -47,6 +50,8 @@ export interface TasksState {
   clearCompleted(): void
   /** Field-level timer change: `update` receives the timer as it is now. */
   updateTimer(update: (timer: TimerState) => TimerState): void
+  /** Round 2: field-level stopwatch change: `update` receives the stopwatch as it is now. */
+  updateStopwatch(update: (stopwatch: StopwatchState) => StopwatchState): void
   // ---- Phase 10: the to-do list's actions (built on the primitives above) --------------------
 
   /** Adds a task at the end of the list; returns its id, or null when the text is blank. */
@@ -55,6 +60,8 @@ export interface TasksState {
   edit(id: string, text: string): void
   /** Checks or unchecks a task; unchecked, it goes to the bottom of the active list. */
   toggle(id: string): void
+  /** Round 2: checks (true) or unchecks (false) a task; a no-op when it is already so. */
+  setDone(id: string, done: boolean): void
   /** Forgets main's data, the revision and unsaved changes; back to unhydrated (tests). */
   reset(): void
 }
@@ -66,13 +73,14 @@ export function createTasksStore(
     const doc = createStoreDoc(
       'tasks',
       emptyTasks,
-      (file) => set({ tasks: file.tasks, timer: file.timer }),
+      (file) => set({ tasks: file.tasks, timer: file.timer, stopwatch: file.stopwatch }),
       options
     )
 
     return {
       tasks: doc.current.view.tasks,
       timer: doc.current.view.timer,
+      stopwatch: doc.current.view.stopwatch,
       hydrated: false,
 
       receive(snapshot) {
@@ -107,6 +115,10 @@ export function createTasksStore(
         doc.current.mutate((file) => updateTimer(file, update))
       },
 
+      updateStopwatch(update) {
+        doc.current.mutate((file) => updateStopwatch(file, update))
+      },
+
       add(text) {
         const line = cleanTaskText(text)
         if (line === null) return null
@@ -122,16 +134,18 @@ export function createTasksStore(
 
       toggle(id) {
         const task = get().tasks.find((entry) => entry.id === id)
-        if (!task) return
         // The wanted state is captured now; setTaskDone is a no-op if it is already so.
-        const done = !task.done
+        if (task) get().setDone(id, !task.done)
+      },
+
+      setDone(id, done) {
         const now = Date.now()
         doc.current.mutate((file) => setTaskDone(file, id, done, now))
       },
 
       reset() {
         const view = doc.reset().view
-        set({ tasks: view.tasks, timer: view.timer, hydrated: false })
+        set({ tasks: view.tasks, timer: view.timer, stopwatch: view.stopwatch, hydrated: false })
       }
     }
   })

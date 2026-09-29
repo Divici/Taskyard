@@ -1,44 +1,64 @@
-import { Check, Pause, Play, Square } from 'lucide-react'
+import { Check, Pause, Play, Square, Undo2 } from 'lucide-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { TIMER_MAX_MS, TIMER_MIN_MS, formatClock, timerRemaining } from '@shared/timer-state'
 import { cn } from '../../../lib/utils'
 import { useTasksStore } from '../../../stores/tasks'
 import { timerController } from '../../../stores/timer'
 import { useUiStore } from '../../../stores/ui'
+import { FocusLine, TaskPicker } from '../TaskFocus'
 import { splitTasks } from '../todo/task-lists'
+import {
+  FIELD,
+  PRIMARY_BUTTON,
+  SECONDARY_BUTTON,
+  SPACE_OWNERS,
+  TOOL_COLUMN,
+  TOOL_ROW
+} from '../tool-styles'
 import { ProgressRing } from './ProgressRing'
-import { RING_LABEL } from './ring-geometry'
 import { useTimerTick } from './useTimerTick'
 
 const MINUTE = 60_000
-/** Controls that handle Space themselves (the view's Start/Pause shortcut skips them). */
-const SPACE_OWNERS = 'input, select, textarea, button, [contenteditable]'
 /** Controls where Esc already means something (clear/close); everywhere else it asks to stop. */
 const ESC_OWNERS = 'input, select, textarea, [contenteditable]'
 const CUSTOM_HINT = 'Enter a whole number of minutes from 1 to 180.'
 /** Announced once when the countdown passes this much time left. */
 const LAST_MINUTE_MS = MINUTE
 
-const BUTTON =
-  'inline-flex h-8 items-center justify-center gap-1.5 rounded-full px-3.5 text-[12px] font-semibold transition-[background-color,color,box-shadow,opacity] duration-[180ms] focus-visible:ring-2 focus-visible:ring-accent-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40'
-const PRIMARY_BUTTON = cn(
-  BUTTON,
-  // The blue accent in both themes (light's accent-2 is cyan, too pale under white text).
-  'bg-accent-2 text-white shadow-[0_0_14px_color-mix(in_srgb,var(--accent-2)_55%,transparent)] hover:brightness-110 [[data-theme=light]_&]:bg-accent-1 [[data-theme=light]_&]:shadow-[0_0_14px_color-mix(in_srgb,var(--accent-1)_45%,transparent)]'
-)
-const SECONDARY_BUTTON = cn(
-  BUTTON,
-  'bg-white/10 text-text-primary hover:bg-white/20 [[data-theme=light]_&]:bg-black/5 [[data-theme=light]_&]:hover:bg-black/10'
-)
-const FIELD =
-  'h-7 rounded-[8px] border border-white/10 bg-black/25 px-2 text-[12px] text-text-primary outline-none focus:border-accent-1/60 focus:ring-2 focus:ring-accent-1/30 disabled:opacity-40 [[data-theme=light]_&]:border-black/10 [[data-theme=light]_&]:bg-white/60'
-
 const store = (): ReturnType<typeof useTasksStore.getState> => useTasksStore.getState()
 
 /**
- * The countdown timer: a large `mm:ss` (`h:mm:ss` past an hour) inside the accent progress ring,
- * Start · Pause/Resume · Stop, presets 5/15/25/45 min and a custom 1–180 minutes field (both
- * locked while a countdown is in progress), and "Focus on…" to link an active task. Space toggles
+ * Round 2: the finished countdown's action for its linked task, derived from the task's current
+ * `done` (so it follows an uncheck in the Tasks tool or another window). It sets the state it
+ * shows rather than toggling, so a stale click can never flip the task back.
+ */
+function LinkedTaskAction({ id, done }: { id: string; done: boolean }): React.JSX.Element {
+  if (!done) {
+    return (
+      <button type="button" onClick={() => store().setDone(id, true)} className={SECONDARY_BUTTON}>
+        <Check aria-hidden="true" className="size-3.5" />
+        Mark done
+      </button>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="text-[12px] font-semibold text-accent-1">Done ✓</span>
+      <button type="button" onClick={() => store().setDone(id, false)} className={SECONDARY_BUTTON}>
+        <Undo2 aria-hidden="true" className="size-3.5" />
+        Undo
+      </button>
+    </span>
+  )
+}
+
+/**
+ * The countdown timer: a large `mm:ss` (`h:mm:ss` past an hour) centred in the accent progress
+ * ring with a short state caption under it, the linked task on one line under the ring, Start ·
+ * Pause/Resume · Stop, presets 5/15/25/45 min and a custom 1–180 minutes field (both locked while
+ * a countdown is in progress), and "Focus on…" to link an active task — all on one centre line.
+ * When a countdown with a linked task has finished, the inline action follows that task's state:
+ * "Mark done" while it is open, "Done ✓ · Undo" once it is done (round 2). Space toggles
  * Start/Pause and Esc (running) asks before stopping, while the view has focus. The display is a
  * `role="timer"` that is not live; a separate polite region says "1 minute left" and "Timer
  * finished".
@@ -64,7 +84,6 @@ export function TimerTool(): React.JSX.Element {
   const [custom, setCustom] = useState(String(timer.durationMs / MINUTE))
   const [customInvalid, setCustomInvalid] = useState(false)
   const hintId = useId()
-  const pickerId = useId()
   const customId = useId()
 
   const counting = timer.status === 'running' || timer.status === 'paused'
@@ -113,19 +132,14 @@ export function TimerTool(): React.JSX.Element {
     if (ok) timerController.stop()
   }
 
-  const status = finished
-    ? timer.finishedAway
-      ? 'Finished while you were away'
-      : 'Time’s up'
+  // Inside the ring, under the clock: one short word or two.
+  const caption = finished
+    ? 'Time’s up'
     : timer.status === 'paused'
       ? 'Paused'
       : timer.status === 'running'
-        ? linked
-          ? `Focus: ${linked.text}`
-          : 'Running'
-        : linked
-          ? `Focus: ${linked.text}`
-          : 'Ready'
+        ? 'Running'
+        : 'Ready'
 
   const progress = timer.durationMs > 0 ? remaining / timer.durationMs : 0
 
@@ -153,33 +167,36 @@ export function TimerTool(): React.JSX.Element {
           void confirmStop()
         }
       }}
-      className="flex h-full min-h-0 flex-col items-stretch gap-3 overflow-y-auto rounded-[12px] outline-none [scrollbar-width:thin] focus-visible:ring-2 focus-visible:ring-accent-1/60"
+      className={TOOL_COLUMN}
     >
-      <ProgressRing progress={progress} finished={finished} paused={timer.status === 'paused'}>
+      <ProgressRing
+        progress={progress}
+        finished={finished}
+        paused={timer.status === 'paused'}
+        caption={caption}
+      >
         <div
           role="timer"
           aria-live="off"
           aria-label="Time left"
           className={cn(
             'font-light tracking-tight text-text-primary tabular-nums',
-            remaining >= 3_600_000 ? 'text-[28px]' : 'text-[36px]',
+            remaining >= 3_600_000 ? 'text-[26px]' : 'text-[34px]',
             finished && 'text-accent-1'
           )}
         >
           {formatClock(remaining)}
         </div>
-        {/* Sized from the ring's inner circle (ring-geometry.ts): a long task name is cut short
-            inside the ring, never across its edge; the full text is the tooltip. */}
-        <p
-          title={status}
-          style={{ maxWidth: RING_LABEL.maxWidth }}
-          className="mt-0.5 truncate text-center text-[11px] leading-4 text-text-tertiary"
-        >
-          {status}
-        </p>
       </ProgressRing>
 
-      <div className="flex flex-wrap items-center justify-center gap-2">
+      {finished && timer.finishedAway && (
+        <p className="shrink-0 text-center text-[11px] leading-4 text-text-tertiary">
+          Finished while you were away
+        </p>
+      )}
+      <FocusLine task={linked} />
+
+      <div className={cn(TOOL_ROW, 'flex flex-wrap items-center justify-center gap-2')}>
         <button
           type="button"
           onClick={primary}
@@ -205,22 +222,13 @@ export function TimerTool(): React.JSX.Element {
           <Square aria-hidden="true" className="size-3" />
           Stop
         </button>
-        {finished && linked && !linked.done && (
-          <button
-            type="button"
-            onClick={() => store().toggle(linked.id)}
-            className={SECONDARY_BUTTON}
-          >
-            <Check aria-hidden="true" className="size-3.5" />
-            Mark done
-          </button>
-        )}
+        {finished && linked && <LinkedTaskAction id={linked.id} done={linked.done} />}
       </div>
 
       <div
         role="group"
         aria-label="Presets"
-        className="flex flex-wrap items-center justify-center gap-1.5"
+        className={cn(TOOL_ROW, 'flex flex-wrap items-center justify-center gap-1.5')}
       >
         {timer.presetsMs.map((ms) => (
           <button
@@ -241,7 +249,10 @@ export function TimerTool(): React.JSX.Element {
         ))}
       </div>
 
-      <div className="flex flex-col gap-1.5 px-1 pb-1 text-[11px] text-text-secondary">
+      <div
+        data-timer-fields=""
+        className={cn(TOOL_ROW, 'flex flex-col gap-1.5 text-[11px] text-text-secondary')}
+      >
         <div className="flex items-center gap-2">
           <label htmlFor={customId} className="w-16 shrink-0">
             Custom
@@ -278,24 +289,11 @@ export function TimerTool(): React.JSX.Element {
             {CUSTOM_HINT}
           </p>
         )}
-        <div className="flex items-center gap-2">
-          <label htmlFor={pickerId} className="w-16 shrink-0">
-            Focus on…
-          </label>
-          <select
-            id={pickerId}
-            value={linked && !linked.done ? linked.id : ''}
-            onChange={(event) => timerController.linkTask(event.target.value || null)}
-            className={cn(FIELD, 'min-w-0 flex-1 [&>option]:bg-[#0b1220] [&>option]:text-white')}
-          >
-            <option value="">No task</option>
-            {active.map((task) => (
-              <option key={task.id} value={task.id}>
-                {task.text}
-              </option>
-            ))}
-          </select>
-        </div>
+        <TaskPicker
+          active={active}
+          linked={linked}
+          onLink={(taskId) => timerController.linkTask(taskId)}
+        />
       </div>
 
       <div data-testid="timer-announcer" aria-live="polite" className="sr-only">

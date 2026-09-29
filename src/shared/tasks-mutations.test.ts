@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultTimer, emptyTasks } from './defaults'
+import { defaultStopwatch, defaultTimer, emptyTasks } from './defaults'
 import type { Task, TasksFile } from './schema'
 import {
   addTask,
@@ -7,6 +7,7 @@ import {
   removeTask,
   reorderTasks,
   setTaskDone,
+  updateStopwatch,
   updateTask,
   updateTimer
 } from './tasks-mutations'
@@ -144,6 +145,37 @@ describe('updateTimer', () => {
     const start = file()
 
     expect(updateTimer(start, (timer) => timer)).toBe(start)
+  })
+})
+
+describe('updateStopwatch', () => {
+  it('applies the updater to the stopwatch in the file it is replayed on', () => {
+    const start = file(task('a'))
+
+    const result = updateStopwatch(start, (watch) => ({ ...watch, accumulatedMs: 4_000 }))
+
+    expect(result.stopwatch.accumulatedMs).toBe(4_000)
+    expect(result.tasks).toBe(start.tasks)
+    expect(result.timer).toBe(start.timer)
+  })
+
+  it('is a no-op when the updater returns the same stopwatch', () => {
+    const start = file()
+
+    expect(updateStopwatch(start, (watch) => watch)).toBe(start)
+  })
+})
+
+describe('removing tasks unlinks the stopwatch', () => {
+  it('removeTask and clearCompleted drop the stopwatch link to a removed task', () => {
+    const start: TasksFile = {
+      ...file(task('a', { done: true, completedAt: 2 }), task('b')),
+      stopwatch: { ...defaultStopwatch(), linkedTaskId: 'a' }
+    }
+
+    expect('linkedTaskId' in removeTask(start, 'a').stopwatch).toBe(false)
+    expect('linkedTaskId' in clearCompleted(start).stopwatch).toBe(false)
+    expect(removeTask(start, 'b').stopwatch).toBe(start.stopwatch)
   })
 })
 

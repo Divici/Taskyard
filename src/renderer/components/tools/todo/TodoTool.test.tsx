@@ -50,6 +50,45 @@ describe('TodoTool', () => {
     expect(screen.queryByText('Nothing to do. Add a task above.')).toBeNull()
   })
 
+  it('round 2: the + is a real "Add task" button — disabled while blank, adds, and keeps focus in the field', async () => {
+    const user = userEvent.setup()
+    const { saved } = setup([task('a', 'Existing')])
+    const input = screen.getByRole('textbox', { name: 'Add a task' })
+    const add = screen.getByRole('button', { name: 'Add task' })
+
+    expect(input).toHaveAttribute('placeholder', 'Add a task…')
+    expect(add).toBeDisabled()
+    await user.type(input, '   ')
+    expect(add).toBeDisabled()
+
+    await user.clear(input)
+    await user.type(input, 'Buy milk')
+    expect(add).toBeEnabled()
+    await user.click(add)
+
+    expect(activeTexts()).toEqual(['Existing', 'Buy milk'])
+    expect(input).toHaveValue('')
+    expect(input).toHaveFocus()
+    expect(add).toBeDisabled()
+    await vi.waitFor(() => expect(saved().tasks.map((t) => t.text)).toContain('Buy milk'))
+  })
+
+  it('round 2: clicking anywhere on the add row focuses the field', async () => {
+    const user = userEvent.setup()
+    setup()
+    const input = screen.getByRole('textbox', { name: 'Add a task' })
+    const row = input.closest('[data-add-row]') as HTMLElement
+
+    await user.click(row)
+    expect(input).toHaveFocus()
+
+    // Disabled, the Add button lets presses fall through to the row (checked with a real mouse
+    // in e2e/tools.spec.ts: jsdom applies no CSS).
+    expect(screen.getByRole('button', { name: 'Add task' })).toHaveClass(
+      'disabled:pointer-events-none'
+    )
+  })
+
   it('the input is one line of at most 500 characters and ignores blank text', async () => {
     const user = userEvent.setup()
     setup()

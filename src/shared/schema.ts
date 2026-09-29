@@ -1,5 +1,11 @@
 import { z } from 'zod'
-import { SETTINGS_VALUES, TIMER_DEFAULT_MS, TIMER_PRESETS_MS, TOOLS_VALUES } from './defaults'
+import {
+  SETTINGS_VALUES,
+  STOPWATCH_MAX_LAPS,
+  TIMER_DEFAULT_MS,
+  TIMER_PRESETS_MS,
+  TOOLS_VALUES
+} from './defaults'
 import { SCHEMA_VERSION } from './version'
 
 /**
@@ -78,7 +84,8 @@ export const ToolsStateSchema = z.object({
   h: z.number().positive(),
   rolledUp: z.boolean(),
   visible: z.boolean(),
-  activeTool: z.enum(['tasks', 'timer'])
+  /** Round 2 added 'stopwatch' (a wider enum: older files stay valid). */
+  activeTool: z.enum(['tasks', 'timer', 'stopwatch'])
 })
 
 export const DisplayLayoutSchema = z.object({
@@ -158,6 +165,43 @@ export const TimerStateSchema = z
     }
   })
 
+/** Round 2: one stopwatch lap. `n` keeps counting after the oldest laps drop off. */
+export const StopwatchLapSchema = z.object({
+  n: z.number().int().positive(),
+  /** Elapsed time when the lap was taken. */
+  totalMs: z.number().int().nonnegative(),
+  /** Time since the lap before it. */
+  splitMs: z.number().int().nonnegative()
+})
+
+/**
+ * Round 2: the stopwatch. It counts up from an absolute `startedAt` plus the time banked before
+ * it (`accumulatedMs`), so like the timer it never drifts and keeps running across restarts.
+ */
+export const StopwatchStateSchema = z
+  .object({
+    status: z.enum(['idle', 'running', 'paused']).default('idle'),
+    /** Running: epoch ms when the current run began. */
+    startedAt: z.number().int().nonnegative().optional(),
+    /** Elapsed ms banked before `startedAt` (all of it while paused). */
+    accumulatedMs: z.number().int().nonnegative().default(0),
+    /** Newest first. */
+    laps: z
+      .array(StopwatchLapSchema)
+      .max(STOPWATCH_MAX_LAPS)
+      .default(() => []),
+    linkedTaskId: z.string().min(1).optional()
+  })
+  .superRefine((watch, ctx) => {
+    if (watch.status === 'running' && watch.startedAt === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['startedAt'],
+        message: 'a running stopwatch needs startedAt'
+      })
+    }
+  })
+
 export const TasksFileSchema = z.object({
   version: z.literal(SCHEMA_VERSION),
   tasks: z.array(TaskSchema).default(() => []),
@@ -165,6 +209,12 @@ export const TasksFileSchema = z.object({
     status: 'idle' as const,
     durationMs: TIMER_DEFAULT_MS,
     presetsMs: [...TIMER_PRESETS_MS]
+  })),
+  /** Round 2: a default, not a version bump — older files get an idle stopwatch. */
+  stopwatch: StopwatchStateSchema.default(() => ({
+    status: 'idle' as const,
+    accumulatedMs: 0,
+    laps: []
   }))
 })
 
@@ -233,6 +283,8 @@ export type ParkedDisplay = z.infer<typeof ParkedDisplaySchema>
 export type LayoutFile = z.infer<typeof LayoutFileSchema>
 export type Task = z.infer<typeof TaskSchema>
 export type TimerState = z.infer<typeof TimerStateSchema>
+export type StopwatchLap = z.infer<typeof StopwatchLapSchema>
+export type StopwatchState = z.infer<typeof StopwatchStateSchema>
 export type TasksFile = z.infer<typeof TasksFileSchema>
 export type SettingsFile = z.infer<typeof SettingsFileSchema>
 export type MoveOpState = z.infer<typeof MoveOpStateSchema>

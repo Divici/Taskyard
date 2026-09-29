@@ -2,6 +2,7 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { axe } from 'vitest-axe'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useDisplayStore } from '../../stores/display'
 import { useUiStore, type ToastInput } from '../../stores/ui'
 import { Toaster } from './Toaster'
 
@@ -162,5 +163,45 @@ describe('Toaster', () => {
     push({ message: 'Failed', tone: 'error', durationMs: null })
 
     expect(await axe(container)).toHaveNoViolations()
+  })
+})
+
+describe('Toaster placement (round 2)', () => {
+  const region = (): HTMLElement => screen.getByRole('region', { name: 'Notifications' })
+
+  it('sits inside the work area, above a bottom taskbar, centred on it', () => {
+    act(() =>
+      useDisplayStore.getState().receiveInfo({
+        id: 1,
+        bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+        workArea: { x: 0, y: 0, width: 1920, height: 1032 },
+        scaleFactor: 1
+      })
+    )
+    render(<Toaster />)
+
+    // 48 px taskbar + the 24 px margin; centred on the work area; 26rem wide (or the area less 2rem).
+    expect(region()).toHaveStyle({ bottom: '72px', left: '960px', width: '416px' })
+    expect(region()).not.toHaveClass('bottom-6')
+  })
+
+  it('follows a taskbar on the left or the top (window coordinates start at the display corner)', () => {
+    act(() =>
+      useDisplayStore.getState().receiveInfo({
+        id: 2,
+        bounds: { x: 2560, y: 0, width: 1920, height: 1080 },
+        workArea: { x: 2560 + 64, y: 0, width: 1920 - 64, height: 1080 },
+        scaleFactor: 1
+      })
+    )
+    render(<Toaster />)
+
+    expect(region()).toHaveStyle({ bottom: '24px', left: `${64 + (1920 - 64) / 2}px` })
+  })
+
+  it('keeps its default spot until the display is known', () => {
+    render(<Toaster />)
+
+    expect(region()).toHaveClass('bottom-6', 'left-1/2')
   })
 })
