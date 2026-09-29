@@ -8,6 +8,7 @@ import { desktopItem, makeGroup, seedCanvas } from '../../test/canvas-fixtures'
 import { mockRect } from '../../test/dnd-rects'
 import { installFakeBridge } from '../../test/fake-bridge'
 import { CANVAS_DROP_ID, groupDropId, type DropData } from './dnd-types'
+import { dropItems } from './drop-actions'
 import { useItemDrop } from './useItemDrop'
 
 const AREA = { x: 0, y: 0, width: 2560, height: 1392 }
@@ -146,7 +147,7 @@ describe('useItemDrop', () => {
     expect(display().groups[0].items).toEqual(['1:1', '1:3'])
   })
 
-  it('appends to a group with another sort (canvas → group); a drop in that same group changes nothing', () => {
+  it('appends to a group with another sort (canvas → group), without an insert indicator', () => {
     seed('name')
     const drop = setup()
     const event = dragEvent('1:6', { x: 40, y: 640 }, { x: 410, y: 100 }, groupB('name'))
@@ -157,11 +158,42 @@ describe('useItemDrop', () => {
     drop.onDragEnd(event)
     expect(display().groups[1].items).toEqual(['1:4', '1:5', '1:6'])
     expect(display().loose).toEqual({})
+  })
 
+  it('round 2: a drag inside a sorted group reorders it from the order shown and makes it manual', () => {
+    seed('name')
+    // Shown by name: Code (1:4), Mail (1:5). Code goes past the middle of Mail: after it.
+    const drop = setup()
+    const event = dragEvent('1:4', { x: 440, y: 100 }, { x: 540, y: 100 }, groupB('name'))
+
+    drop.onDragStart(event)
+    drop.onDragMove(event)
+    expect(useUiStore.getState().dropHint).toEqual({ kind: 'group', groupId: 'b', index: 2 })
+    drop.onDragEnd(event)
+
+    expect(display().groups[1]).toMatchObject({ sort: 'manual', items: ['1:5', '1:4'] })
+  })
+
+  it('round 2: dropping an icon back on its own spot in a sorted group changes nothing', () => {
+    seed('name')
     const before = useLayoutStore.getState().layout
-    const again = dragEvent('1:4', { x: 410, y: 100 }, { x: 600, y: 100 }, groupB('name'))
+    const drop = setup()
+    const again = dragEvent('1:4', { x: 410, y: 100 }, { x: 412, y: 100 }, groupB('name'))
     drop.onDragStart(again)
     drop.onDragEnd(again)
+    expect(useLayoutStore.getState().layout).toBe(before)
+  })
+
+  it('a drop of a member onto its sorted group with no insert point (an Explorer drop) keeps it sorted', () => {
+    seed('name')
+    const before = useLayoutStore.getState().layout
+    dropItems({ displayId: 1, area: AREA, cell: CELL }, ['1:4'], '1:4', {
+      kind: 'group',
+      groupId: 'b',
+      index: null,
+      beforeId: null,
+      shown: ['1:4', '1:5']
+    })
     expect(useLayoutStore.getState().layout).toBe(before)
   })
 

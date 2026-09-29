@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { clampRect, localWorkArea } from '@shared/geometry'
-import { looseCell } from '@shared/group-metrics'
+import { looseCell, visibleGroupRect } from '@shared/group-metrics'
 import type { DisplayInfo } from '@shared/ipc'
 import type { Group, Point } from '@shared/schema'
 import {
@@ -33,6 +33,7 @@ import { CanvasContextMenu } from './CanvasContextMenu'
 import { EmptyHint } from './EmptyHint'
 import { LooseIconLayer } from './LooseIconLayer'
 import { Marquee } from './Marquee'
+import { SnapGuides } from './SnapGuides'
 import { useMarquee } from './useMarquee'
 
 export interface DesktopCanvasProps {
@@ -43,14 +44,17 @@ export interface DesktopCanvasProps {
 const NO_GROUPS: readonly Group[] = []
 const NO_LOOSE: Readonly<Record<string, Point>> = {}
 
-/** A group pulled back inside the work area (the same group when it already is). */
+/**
+ * A group pulled back inside the work area (the same group when it already is). A rolled-up group
+ * only keeps its title bar inside; rolled down it grows upward if it must (toggleGroupRollUp).
+ */
 function clampedInto(area: ReturnType<typeof localWorkArea>): (group: Group) => Group {
   return (group) => {
-    const rect = { x: group.x, y: group.y, width: group.w, height: group.h }
+    const rect = visibleGroupRect(group)
     const clamped = clampRect(rect, area)
-    return clamped === rect
-      ? group
-      : { ...group, x: clamped.x, y: clamped.y, w: clamped.width, h: clamped.height }
+    if (clamped === rect) return group
+    const h = group.rolledUp ? group.h : clamped.height
+    return { ...group, x: clamped.x, y: clamped.y, w: clamped.width, h }
   }
 }
 
@@ -77,8 +81,16 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
   const { x, y, width, height } = localWorkArea(info)
   const area = useMemo(() => ({ x, y, width, height }), [x, y, width, height])
   const cell = looseCell(settings.iconSize)
+  // Round 2: the grid step for new groups (null: grid snap off).
+  const grid = settings.gridSnap ? settings.gridSize : null
 
-  const stacked = useMemo(() => [...groups].sort((a, b) => a.z - b.z), [groups])
+  // Groups render in the layout's (stable) order and stack by their rank of `z`. Sorting the
+  // elements by z made React move a group's node when a press raised it, and Chromium drops the
+  // click of a press whose node moved: the chevron needed a second click (round 2).
+  const stackRank = useMemo(() => {
+    const byZ = [...groups].sort((a, b) => a.z - b.z)
+    return new Map(byZ.map((group, index) => [group.id, index + 1]))
+  }, [groups])
 
   // Phase 12: the groups present at launch enter one after another (lib/motion.ts); a group
   // made later — or made by the user while the launch entrance runs — just appears.
@@ -114,7 +126,7 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
 
   const marquee = useMarquee({
     targets: looseTargets,
-    onDrawGroup: (rect, ids) => groupFromMarquee(displayId, rect, area, settings.gridSnap, ids)
+    onDrawGroup: (rect, ids) => groupFromMarquee(displayId, rect, area, grid, ids)
   })
 
   // Phase 11: the first-run card, once, on the primary display (it takes the hint's place).
@@ -127,7 +139,7 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
     <div data-desktop-canvas={displayId} className="absolute inset-0" {...externalDrop}>
       <DndProvider displayId={displayId} area={area} cell={cell}>
         <CanvasContextMenu
-          onNewGroup={(point) => newGroupAt(displayId, point, area, settings.gridSnap)}
+          onNewGroup={(point) => newGroupAt(displayId, point, area, grid)}
           onAutoOrganize={() => void confirmAutoOrganize(displayId, area, settings.iconSize)}
           onSortLoose={() => sortLooseIcons(displayId, area, settings.iconSize)}
           onRefresh={refreshDesktop}
@@ -164,13 +176,13 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
           showExtension={settings.showExtensions}
           hidden={quickHidden}
         />
-        {stacked.map((group, index) => (
+        {groups.map((group) => (
           <GroupWindow
             key={group.id}
             group={group}
             displayId={displayId}
             area={area}
-            stackIndex={index + 1}
+            stackIndex={stackRank.get(group.id)}
             hidden={quickHidden && !group.excludeFromQuickHide}
             revealIndex={entrance?.get(group.id)}
           />
@@ -180,9 +192,11 @@ export function DesktopCanvas({ displayId, info }: DesktopCanvasProps): React.JS
           displayId={displayId}
           info={info}
           area={area}
-          zIndex={stacked.length + 1}
+          zIndex={groups.length + 1}
           hidden={quickHidden}
         />
+        {/* Round 2: alignment guides while a group or the tools widget moves or resizes. */}
+        <SnapGuides zIndex={groups.length + 2} />
         <Marquee />
         {showHint && !quickHidden && (
           <EmptyHint

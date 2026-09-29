@@ -1,14 +1,18 @@
 import { useRef, useState } from 'react'
 import { moveRect } from '@shared/geometry'
 import type { Rect } from '@shared/schema'
+import { snapMove, type SnapOptions } from '@shared/snapping'
+import { useUiStore } from '../../stores/ui'
+import { snapOptionsFor } from './snap-targets'
 
 /** A press becomes a drag once the pointer has moved this far (px), so double-clicks work. */
 export const DRAG_THRESHOLD = 3
 
 export interface GroupDragOptions {
-  /** The group's rect now (full height). */
+  /** The window's rect now, as it is on screen (a rolled-up group: its header only). */
   rect: Rect
   area: Rect
+  /** Grid snap (Settings); the step is Settings' grid size. Edges always align (Alt: never). */
   snap: boolean
   /** Called once when the press turns into a drag. */
   onDragStart?(): void
@@ -36,11 +40,13 @@ interface Press {
   start: Rect
   last: Rect
   moved: boolean
+  snapping: SnapOptions
 }
 
 /**
- * Title-bar drag for a group (and the tools widget): pointer capture, clamped into the work area,
- * snapped to 8 px when grid snap is on. `pointerdown` stops propagating so dnd-kit's sensor never
+ * Title-bar drag for a group (and the tools widget): pointer capture, clamped into the work area;
+ * edges and centres pull onto the other windows' and the work area's edges (with guide lines),
+ * else the position snaps to the grid when grid snap is on; holding Alt moves freely. `pointerdown` stops propagating so dnd-kit's sensor never
  * starts an item drag from the title bar; presses on buttons or the rename field are ignored.
  */
 export function useGroupDrag({
@@ -58,6 +64,7 @@ export function useGroupDrag({
     const current = press.current
     if (!current || current.pointerId !== event.pointerId) return
     press.current = null
+    useUiStore.getState().setSnapGuides([])
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -80,7 +87,8 @@ export function useGroupDrag({
           startY: event.clientY,
           start: rect,
           last: rect,
-          moved: false
+          moved: false,
+          snapping: snapOptionsFor(event.currentTarget, area, snap)
         }
       },
       onPointerMove(event) {
@@ -94,7 +102,11 @@ export function useGroupDrag({
           setDragging(true)
           onDragStart?.()
         }
-        current.last = moveRect(current.start, dx, dy, area, snap)
+        const snapped = event.altKey
+          ? { rect: moveRect(current.start, dx, dy, area, false), guides: [] }
+          : snapMove(current.start, dx, dy, current.snapping)
+        current.last = snapped.rect
+        useUiStore.getState().setSnapGuides(snapped.guides)
         onDrag(current.last)
       },
       onPointerUp: (event) => finish(event, true),

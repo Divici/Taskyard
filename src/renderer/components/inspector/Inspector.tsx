@@ -38,6 +38,12 @@ const ICON_SIZES = [
   { value: 'large', label: 'Large' }
 ] as const satisfies readonly { value: SettingsFile['iconSize']; label: string }[]
 
+const GRID_SIZES = [
+  { value: '8', label: '8 px' },
+  { value: '16', label: '16 px' },
+  { value: '32', label: '32 px' }
+] as const satisfies readonly { value: `${SettingsFile['gridSize']}`; label: string }[]
+
 /** The design's four accent dots, in its order, with their swatch colours. */
 const ACCENTS = [
   { value: 'blue', label: 'Blue', swatch: '#0077ff' },
@@ -251,10 +257,18 @@ export function Inspector({ displayId, area }: InspectorProps): React.JSX.Elemen
           />
           <SettingSwitch
             label="Snap to grid"
-            description="Groups and the tools widget move in 8 px steps."
+            description="Groups and the tools widget move in grid steps. Edges always line up with their neighbours; hold Alt to place freely."
             checked={settings.gridSnap}
             onCheckedChange={(gridSnap) => update({ gridSnap })}
           />
+          {settings.gridSnap && (
+            <SegmentedRadio
+              label="Grid size"
+              value={`${settings.gridSize}`}
+              options={GRID_SIZES}
+              onChange={(size) => update({ gridSize: Number(size) as SettingsFile['gridSize'] })}
+            />
+          )}
         </InspectorSection>
 
         <InspectorSection title="Behavior">

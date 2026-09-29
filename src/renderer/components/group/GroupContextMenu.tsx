@@ -126,7 +126,7 @@ export function GroupContextMenu({
         </ContextMenuItem>
         <ContextMenuItem
           className={MENU_ITEM}
-          onSelect={() => layout().toggleRollUp(displayId, group.id)}
+          onSelect={() => layout().toggleRollUp(displayId, group.id, area)}
         >
           {group.rolledUp ? 'Roll down' : 'Roll up'}
         </ContextMenuItem>

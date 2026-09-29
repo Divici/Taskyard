@@ -1,5 +1,5 @@
 import type { Size } from './geometry'
-import type { SettingsFile } from './schema'
+import type { Group, Rect, SettingsFile } from './schema'
 
 // Sizes of the group chrome and the icon grid, shared by the renderer (layout, hit testing) and
 // the pure placement code (auto-organize, new-item slots), so both agree to the pixel.
@@ -8,6 +8,16 @@ export type IconSize = SettingsFile['iconSize']
 
 /** A group's title bar; a rolled-up group is exactly this tall. */
 export const GROUP_HEADER_HEIGHT = 36
+
+/** Where a group is on screen: rolled up, just its title bar (its `h` is kept for rolling down). */
+export function visibleGroupRect(group: Pick<Group, 'x' | 'y' | 'w' | 'h' | 'rolledUp'>): Rect {
+  return {
+    x: group.x,
+    y: group.y,
+    width: group.w,
+    height: group.rolledUp ? GROUP_HEADER_HEIGHT : group.h
+  }
+}
 
 /** The glass border (1 px top and bottom) inside a group's height. */
 export const GROUP_BORDER = 2

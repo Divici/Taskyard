@@ -251,6 +251,77 @@ export function moveItems(
   })
 }
 
+/** `order` with `moving` taken out and put back before `beforeId` (or its next unmoved item). */
+function insertBefore(
+  order: readonly string[],
+  moving: readonly string[],
+  beforeId: string | null
+): string[] {
+  const set = new Set(moving)
+  const from = beforeId === null ? -1 : order.indexOf(beforeId)
+  const anchor = from === -1 ? undefined : order.slice(from).find((id) => !set.has(id))
+  const rest = order.filter((id) => !set.has(id))
+  const at = anchor === undefined ? rest.length : rest.indexOf(anchor)
+  return [...rest.slice(0, at), ...moving, ...rest.slice(at)]
+}
+
+/**
+ * Round 2: a drag inside one group reorders it. `shown` is the order the user saw when dropping
+ * (the group's sort applied), so a sorted group starts from that order, switches to `manual` and
+ * keeps the drop order; members not shown (missing files) stay after the shown ones. A manual
+ * group reorders its own `items`. Ids no longer in the group (moved by another window meanwhile)
+ * are skipped. The same object when nothing moves — a drop in place keeps the sort too.
+ */
+export function reorderInGroup(
+  layout: LayoutFile,
+  displayId: number,
+  groupId: string,
+  ids: readonly string[],
+  beforeId: string | null,
+  shown: readonly string[]
+): LayoutFile {
+  return updateGroup(layout, displayId, groupId, (group) => {
+    const members = new Set(group.items)
+    const moving = [...new Set(ids)].filter((id) => members.has(id))
+    if (moving.length === 0) return group
+    const base =
+      group.sort === 'manual'
+        ? group.items
+        : [
+            ...shown.filter((id) => members.has(id)),
+            ...group.items.filter((id) => !shown.includes(id))
+          ]
+    const items = insertBefore(base, moving, beforeId)
+    if (sameItems(items, base)) return group
+    return { ...group, sort: 'manual', items }
+  })
+}
+
+/**
+ * Rolls a group up, or down (Fences): rolled down it comes to the front so it reads over its
+ * neighbours, and when its full height would run past the bottom of `area` it grows upward
+ * instead — its title bar moves up (never above the area's top) and the rect keeps that
+ * geometry. Other groups are never pushed. The same object for a gone group.
+ */
+export function toggleGroupRollUp(
+  layout: LayoutFile,
+  displayId: number,
+  groupId: string,
+  area?: Rect
+): LayoutFile {
+  const toggled = updateGroup(layout, displayId, groupId, (group) => {
+    if (!group.rolledUp) return { ...group, rolledUp: true }
+    const bottom = area ? area.y + area.height : Infinity
+    const y = group.y + group.h > bottom ? Math.max(area!.y, bottom - group.h) : group.y
+    return { ...group, rolledUp: false, y }
+  })
+  if (toggled === layout) return layout
+  const group = toggled.displays
+    .find((display) => display.displayId === displayId)
+    ?.groups.find((entry) => entry.id === groupId)
+  return group?.rolledUp === false ? bringGroupToFront(toggled, displayId, groupId) : toggled
+}
+
 /** Grid cell for loose icons when nothing better is known (the medium icon size). */
 export const DEFAULT_LOOSE_CELL = { width: 96, height: 96 } as const
 

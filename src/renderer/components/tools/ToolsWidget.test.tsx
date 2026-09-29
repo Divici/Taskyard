@@ -119,11 +119,11 @@ describe('ToolsWidget', () => {
       { coords: { clientX: 300, clientY: 170 } },
       { coords: { clientX: 363, clientY: 219 } }
     ])
-    expect(region).toHaveStyle({ left: '304px', top: '200px' })
+    expect(region).toHaveStyle({ left: '304px', top: '208px' })
     expect(currentTools()).toMatchObject({ x: 200, y: 120 })
 
     await user.pointer({ keys: '[/MouseLeft]' })
-    expect(currentTools()).toMatchObject({ x: 304, y: 200, w: 320, h: 400 })
+    expect(currentTools()).toMatchObject({ x: 304, y: 208, w: 320, h: 400 })
   })
 
   it('resizes from a handle and stops at the 280 × 220 minimum', async () => {

@@ -20,6 +20,7 @@ import {
   dropItems,
   groupTarget,
   hintOf,
+  reordersGroup,
   type DropPlace,
   type DropTarget
 } from './drop-actions'
@@ -52,19 +53,19 @@ function dragPoint({ activatorEvent, delta, active }: Moving): Point | null {
   return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null
 }
 
-function targetOf(event: Moving, place: DropPlace): DropTarget | null {
+function targetOf(event: Moving, place: DropPlace, ids: readonly string[]): DropTarget | null {
   const point = dragPoint(event)
   const data = event.over?.data.current as DropData | undefined
   if (!point || !data) return null
-  return data.kind === 'group'
-    ? groupTarget(data.groupId, data.sort, data.body(), point)
-    : canvasTarget(point, place)
+  if (data.kind !== 'group') return canvasTarget(point, place)
+  const reorder = reordersGroup(place.displayId, data.groupId, ids)
+  return groupTarget(data.groupId, data.sort, data.body(), point, reorder)
 }
 
 /** dnd-kit's handlers for dragging desktop icons on one display (Phase 8). */
 export function createItemDrop(place: DropPlace): ItemDropHandlers {
   const track = (event: Moving): void => {
-    const target = targetOf(event, place)
+    const target = targetOf(event, place, useUiStore.getState().drag?.ids ?? [])
     useUiStore.getState().setDropHint(target ? hintOf(target) : null)
   }
 
@@ -95,7 +96,7 @@ export function createItemDrop(place: DropPlace): ItemDropHandlers {
     onDragEnd(event) {
       const ui = useUiStore.getState()
       const drag = ui.drag
-      const target = targetOf(event, place)
+      const target = targetOf(event, place, drag?.ids ?? [])
       ui.endDrag()
       if (drag && target) dropItems(place, drag.ids, drag.activeId, target)
     },

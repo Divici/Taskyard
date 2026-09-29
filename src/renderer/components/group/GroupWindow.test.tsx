@@ -100,19 +100,19 @@ describe('GroupWindow', () => {
     expect(within(region).getByRole('listbox')).toBeInTheDocument()
   })
 
-  it('resizes with a pointer drag on a handle (snapped to 8 px) and saves once on release', async () => {
+  it('resizes with a pointer drag on a handle (snapped to the 16 px default grid) and saves once on release', async () => {
     const { region, user } = renderGroup()
     await user.pointer([
       { keys: '[MouseLeft>]', target: handle('se'), coords: { clientX: 380, clientY: 300 } },
       { coords: { clientX: 400, clientY: 330 } },
       { coords: { clientX: 421, clientY: 357 } }
     ])
-    // Live while dragging, not saved yet: the edge (421, 357) snaps to (424, 360).
-    expect(region).toHaveStyle({ width: '324px', height: '260px' })
+    // Live while dragging, not saved yet: the edge (421, 357) snaps to (416, 352).
+    expect(region).toHaveStyle({ width: '316px', height: '252px' })
     expect(currentGroup()).toMatchObject({ w: 280, h: 200 })
 
     await user.pointer({ keys: '[/MouseLeft]' })
-    expect(currentGroup()).toMatchObject({ x: 100, y: 100, w: 324, h: 260 })
+    expect(currentGroup()).toMatchObject({ x: 100, y: 100, w: 316, h: 252 })
   })
 
   it('stops at the minimum size (160 × 120)', async () => {
@@ -241,6 +241,29 @@ describe('GroupWindow', () => {
     const displays = useLayoutStore.getState().layout.displays
     expect(displays[0].groups).toEqual([])
     expect(displays[1].groups[0]).toMatchObject({ id: 'g', x: 1620, y: 832, w: 300, h: 200 })
+  })
+
+  it('its submenus render outside the menu’s glass box (contain: paint clipped them away)', async () => {
+    const { region, user } = renderGroup()
+    for (const [trigger, role, first] of [
+      ['Sort by', 'menuitemradio', 'Manual'],
+      ['Icon size', 'menuitemradio', 'Small'],
+      ['Move to display', 'menuitem', 'No other display']
+    ] as const) {
+      fireEvent.contextMenu(within(region).getByRole('heading', { name: 'Work' }))
+      const menu = await screen.findByRole('menu')
+      ;(await within(menu).findByRole('menuitem', { name: trigger })).focus()
+      await user.keyboard('{ArrowRight}')
+      const item = await screen.findByRole(role, { name: first })
+      const submenu = item.closest('[role="menu"]')!
+      // Focus moves into the submenu (its first item; "No other display" is disabled).
+      await waitFor(() => expect(submenu.contains(document.activeElement)).toBe(true))
+      expect(submenu).not.toBe(menu)
+      expect(menu.contains(submenu)).toBe(false)
+      expect(submenu.closest('.glass')).toBe(submenu)
+      await user.keyboard('{Escape}')
+      await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    }
   })
 
   it('has no detectable accessibility violations', async () => {

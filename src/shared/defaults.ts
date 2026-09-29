@@ -46,6 +46,8 @@ export const SETTINGS_VALUES = {
   timerSound: true,
   timerNotify: true,
   gridSnap: true,
+  /** Round 2: the grid step (px) while grid snap is on — 8, 16 or 32. */
+  gridSize: 16,
   firstRunDone: false,
   /** Phase 12: the motion kill switch (Settings › Behavior › Reduce motion). */
   reduceMotion: false

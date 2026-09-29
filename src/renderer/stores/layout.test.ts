@@ -656,6 +656,53 @@ describe('layout store', () => {
     })
   })
 
+  describe('round 2 actions', () => {
+    function hydrated(data: LayoutFile): {
+      bridge: ReturnType<typeof installFakeBridge>
+      store: ReturnType<typeof createLayoutStore>
+    } {
+      const bridge = installFakeBridge()
+      const store = createLayoutStore()
+      store.getState().receive({ revision: 1, data })
+      return { bridge, store }
+    }
+
+    it('toggleRollUp with the work area: rolled down on top, growing upward; one save', async () => {
+      const start = withDisplay()
+      start.displays[0].groups = [
+        group('low', { y: 900, h: 300, z: 1, rolledUp: true }),
+        group('other', { z: 4 })
+      ]
+      const { bridge, store } = hydrated(start)
+
+      store.getState().toggleRollUp(1, 'low', { x: 0, y: 0, width: 1920, height: 1032 })
+
+      expect(store.getState().layout.displays[0].groups[0]).toMatchObject({
+        rolledUp: false,
+        y: 732,
+        h: 300,
+        z: 5
+      })
+      await drain()
+      expect(bridge.storage.save).toHaveBeenCalledOnce()
+    })
+
+    it('reorderInGroup reorders a sorted group from the order shown and makes it manual', async () => {
+      const start = withDisplay()
+      start.displays[0].groups = [group('g', { sort: 'name', items: ['1:1', '1:2', '1:3'] })]
+      const { bridge, store } = hydrated(start)
+
+      store.getState().reorderInGroup(1, 'g', ['1:3'], '1:1', ['1:3', '1:2', '1:1'])
+
+      expect(store.getState().layout.displays[0].groups[0]).toMatchObject({
+        sort: 'manual',
+        items: ['1:2', '1:3', '1:1']
+      })
+      await drain()
+      expect(bridge.storage.save).toHaveBeenCalledOnce()
+    })
+  })
+
   describe('Phase 8 actions', () => {
     it('placeItems places on one display (off every other) and restorePlacements undoes it', async () => {
       const bridge = installFakeBridge()

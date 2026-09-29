@@ -59,15 +59,17 @@ export interface GroupDrop {
 }
 
 /**
- * A drop at `point` on a group: a `manual` group inserts at the index under the pointer; any
- * other sort, or a rolled-up group (no body), appends and lets the group sort.
+ * A drop at `point` on a group: a `manual` group — or any group the drag reorders (its icons all
+ * come from it; round 2) — inserts at the index under the pointer; any other sort, or a rolled-up
+ * group (no body), appends and lets the group sort.
  */
 export function resolveGroupDrop(
   body: HTMLElement | null,
   point: Point,
-  sort: GroupSort
+  sort: GroupSort,
+  reorder = false
 ): GroupDrop {
-  if (body === null || sort !== 'manual') return { index: null, beforeId: null }
+  if (body === null || (sort !== 'manual' && !reorder)) return { index: null, beforeId: null }
   const index = gridInsertIndex(point, groupBodyGrid(body))
   return { index, beforeId: groupBodyIds(body)[index] ?? null }
 }

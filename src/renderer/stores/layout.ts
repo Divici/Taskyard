@@ -12,7 +12,9 @@ import {
   moveGroupToDisplay,
   moveItems,
   putGroup,
+  reorderInGroup,
   setLoosePosition,
+  toggleGroupRollUp,
   updateDisplay,
   updateGroup,
   updateTools,
@@ -120,8 +122,22 @@ export interface LayoutState {
   renameGroup(displayId: number, groupId: string, title: string): void
   moveGroup(displayId: number, groupId: string, to: Point): void
   resizeGroup(displayId: number, groupId: string, rect: Rect): void
-  /** Rolls the group up to its title bar, or back down (width and height are kept). */
-  toggleRollUp(displayId: number, groupId: string): void
+  /**
+   * Rolls the group up to its title bar, or back down (width and height are kept). Rolled down it
+   * comes to the front and, given the work area, grows upward when it would run past its bottom.
+   */
+  toggleRollUp(displayId: number, groupId: string, area?: Rect): void
+  /**
+   * Round 2: a drag inside one group — `ids` go before `beforeId` in the order the user saw
+   * (`shown`); a sorted group becomes manual (src/shared/layout-mutations.ts `reorderInGroup`).
+   */
+  reorderInGroup(
+    displayId: number,
+    groupId: string,
+    ids: string[],
+    beforeId: string | null,
+    shown: string[]
+  ): void
   setGroupSort(displayId: number, groupId: string, sort: GroupSort): void
   setExcludeFromQuickHide(displayId: number, groupId: string, exclude: boolean): void
   /**
@@ -296,8 +312,17 @@ export function createLayoutStore(
         )
       },
 
-      toggleRollUp(displayId, groupId) {
-        get().updateGroup(displayId, groupId, (group) => ({ ...group, rolledUp: !group.rolledUp }))
+      toggleRollUp(displayId, groupId, area) {
+        const bounds = area && { ...area }
+        doc.current.mutate((layout) => toggleGroupRollUp(layout, displayId, groupId, bounds))
+      },
+
+      reorderInGroup(displayId, groupId, ids, beforeId, shown) {
+        const moving = [...ids]
+        const order = [...shown]
+        doc.current.mutate((layout) =>
+          reorderInGroup(layout, displayId, groupId, moving, beforeId, order)
+        )
       },
 
       setGroupSort(displayId, groupId, sort) {

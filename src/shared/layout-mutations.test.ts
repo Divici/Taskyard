@@ -12,6 +12,8 @@ import {
   moveItems,
   putGroup,
   renamePath,
+  reorderInGroup,
+  toggleGroupRollUp,
   setLoosePosition,
   updateDisplay,
   updateGroup,
@@ -475,5 +477,103 @@ describe('clearPlacements (Settings › Reset layout)', () => {
   it('is the same object when there is nothing to clear', () => {
     const layout: LayoutFile = { ...emptyLayout(), displays: [newDisplayLayout(1, PRIMARY)] }
     expect(clearPlacements(layout)).toBe(layout)
+  })
+})
+
+describe('reorderInGroup (a drag inside one group)', () => {
+  const ids = (layout: LayoutFile): string[] => layout.displays[0].groups[0].items
+
+  it('a manual group: moves the ids before the anchor, like moveItems', () => {
+    const start = withGroups({ ...group('g'), items: ['1:1', '1:2', '1:3'] })
+
+    const result = reorderInGroup(start, 1, 'g', ['1:1'], null, ['1:1', '1:2', '1:3'])
+
+    expect(ids(result)).toEqual(['1:2', '1:3', '1:1'])
+    expect(result.displays[0].groups[0].sort).toBe('manual')
+  })
+
+  it('a sorted group: starts from the order shown, switches to manual and keeps the drop order', () => {
+    // Stored in placement order, shown by name as Alpha (1:3), Beta (1:1), Gamma (1:2).
+    const start = withGroups({ ...group('g'), sort: 'name', items: ['1:1', '1:2', '1:3'] })
+
+    const result = reorderInGroup(start, 1, 'g', ['1:3'], null, ['1:3', '1:1', '1:2'])
+
+    expect(result.displays[0].groups[0]).toMatchObject({
+      sort: 'manual',
+      items: ['1:1', '1:2', '1:3']
+    })
+    // Before Gamma: Beta, Alpha, Gamma.
+    const before = reorderInGroup(start, 1, 'g', ['1:3'], '1:2', ['1:3', '1:1', '1:2'])
+    expect(ids(before)).toEqual(['1:1', '1:3', '1:2'])
+  })
+
+  it('keeps members that are not shown (missing files) after the shown ones', () => {
+    const start = withGroups({ ...group('g'), sort: 'type', items: ['9:9', '1:1', '1:2'] })
+
+    const result = reorderInGroup(start, 1, 'g', ['1:2'], '1:1', ['1:1', '1:2'])
+
+    expect(ids(result)).toEqual(['1:2', '1:1', '9:9'])
+  })
+
+  it('a drop in place changes nothing, not even the sort', () => {
+    const sorted = withGroups({ ...group('g'), sort: 'name', items: ['1:1', '1:2'] })
+    expect(reorderInGroup(sorted, 1, 'g', ['1:2'], '1:2', ['1:2', '1:1'])).toBe(sorted)
+    expect(reorderInGroup(sorted, 1, 'g', ['1:1'], null, ['1:2', '1:1'])).toBe(sorted)
+    const manual = withGroups({ ...group('g'), items: ['1:1', '1:2'] })
+    expect(reorderInGroup(manual, 1, 'g', ['1:1'], '1:2', ['1:1', '1:2'])).toBe(manual)
+  })
+
+  it('replayed after another window changed the group: only ids still in it move; a gone group is a no-op', () => {
+    const start = withGroups({ ...group('g'), items: ['1:1', '1:3'] })
+    // 1:2 left the group meanwhile.
+    expect(ids(reorderInGroup(start, 1, 'g', ['1:1', '1:2'], null, ['1:1', '1:2', '1:3']))).toEqual(
+      ['1:3', '1:1']
+    )
+    expect(reorderInGroup(start, 1, 'gone', ['1:1'], null, [])).toBe(start)
+    expect(reorderInGroup(start, 1, 'g', ['7:7'], null, ['1:1', '1:3'])).toBe(start)
+  })
+})
+
+describe('toggleGroupRollUp', () => {
+  const AREA = { x: 0, y: 0, width: 1920, height: 1032 }
+  const find = (layout: LayoutFile, id: string): Group =>
+    layout.displays[0].groups.find((g) => g.id === id)!
+
+  it('rolls a group up in place (height kept for later)', () => {
+    const start = withGroups({ ...group('a'), y: 900, h: 300, z: 1 }, { ...group('b'), z: 5 })
+
+    const result = toggleGroupRollUp(start, 1, 'a', AREA)
+
+    expect(find(result, 'a')).toMatchObject({ rolledUp: true, y: 900, h: 300, z: 1 })
+  })
+
+  it('rolled down it comes to the front, so it reads over the group below', () => {
+    const start = withGroups(
+      { ...group('a'), y: 100, h: 300, z: 1, rolledUp: true },
+      { ...group('b'), y: 140, z: 5 }
+    )
+
+    const result = toggleGroupRollUp(start, 1, 'a', AREA)
+
+    expect(find(result, 'a')).toMatchObject({ rolledUp: false, y: 100, z: 6 })
+    expect(find(result, 'b').z).toBe(5)
+  })
+
+  it('grows upward when its height would run past the bottom of the work area', () => {
+    const start = withGroups({ ...group('a'), y: 900, h: 300, rolledUp: true })
+
+    const result = toggleGroupRollUp(start, 1, 'a', AREA)
+
+    // 900 + 300 > 1032: the title bar moves up to 732 and the rect keeps that geometry.
+    expect(find(result, 'a')).toMatchObject({ rolledUp: false, y: 732, h: 300 })
+    // Taller than the area: it stops at the top.
+    const tall = withGroups({ ...group('a'), y: 900, h: 1200, rolledUp: true })
+    expect(find(toggleGroupRollUp(tall, 1, 'a', { ...AREA, y: 40 }), 'a').y).toBe(40)
+  })
+
+  it('without an area it only rolls down and comes to the front; a gone group is a no-op', () => {
+    const start = withGroups({ ...group('a'), y: 900, h: 300, rolledUp: true })
+    expect(find(toggleGroupRollUp(start, 1, 'a'), 'a')).toMatchObject({ rolledUp: false, y: 900 })
+    expect(toggleGroupRollUp(start, 1, 'gone', AREA)).toBe(start)
   })
 })

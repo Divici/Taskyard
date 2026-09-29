@@ -231,6 +231,7 @@ describe('SettingsFileSchema', () => {
       timerSound: true,
       timerNotify: true,
       gridSnap: true,
+      gridSize: 16,
       firstRunDone: false,
       reduceMotion: false
     })
@@ -242,6 +243,17 @@ describe('SettingsFileSchema', () => {
     delete before.reduceMotion
     expect(SettingsFileSchema.parse(before).reduceMotion).toBe(false)
     expect(SettingsFileSchema.parse({ ...before, reduceMotion: true }).reduceMotion).toBe(true)
+  })
+
+  it('round 2: the grid step is 8, 16 or 32 px; a file from before it existed gets 16', () => {
+    const before: Partial<SettingsFile> = defaultSettings()
+    delete before.gridSize
+    expect(SettingsFileSchema.parse(before).gridSize).toBe(16)
+    for (const gridSize of [8, 16, 32]) {
+      expect(SettingsFileSchema.parse({ ...before, gridSize }).gridSize).toBe(gridSize)
+    }
+    expect(SettingsFileSchema.safeParse({ ...before, gridSize: 12 }).success).toBe(false)
+    expect(SettingsFileSchema.safeParse({ ...before, gridSize: '16' }).success).toBe(false)
   })
 
   it('bounds glassOpacity to 0–100 and glassBlur to 0–40', () => {

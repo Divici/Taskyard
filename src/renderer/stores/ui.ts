@@ -1,6 +1,7 @@
 import { create, type StoreApi, type UseBoundStore } from 'zustand'
 import type { ReadOnlyInfo } from '@shared/ipc'
 import type { Point, Rect } from '@shared/schema'
+import type { SnapGuide } from '@shared/snapping'
 
 export type ToastTone = 'info' | 'success' | 'warning' | 'error'
 
@@ -79,6 +80,19 @@ export interface ItemDrag {
 export type DropHint =
   { kind: 'group'; groupId: string; index: number | null } | { kind: 'canvas'; point: Point }
 
+function sameGuides(a: readonly SnapGuide[], b: readonly SnapGuide[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (guide, index) =>
+        guide.axis === b[index].axis &&
+        guide.at === b[index].at &&
+        guide.from === b[index].from &&
+        guide.to === b[index].to
+    )
+  )
+}
+
 function sameHint(a: DropHint | null, b: DropHint | null): boolean {
   if (a === null || b === null) return a === b
   if (a.kind === 'group' && b.kind === 'group')
@@ -148,6 +162,13 @@ export interface UiState {
   setDropHint(hint: DropHint | null): void
   /** Clears the drag and the hint. */
   endDrag(): void
+
+  // ---- Round 2: snapping (per window, never persisted) --------------------------------------
+
+  /** The alignment guides of the group or widget being moved or resized; empty otherwise. */
+  snapGuides: SnapGuide[]
+  /** Notifies only when the guides really change (they are set on every pointer move). */
+  setSnapGuides(guides: SnapGuide[]): void
 }
 
 function sameIds(a: readonly string[], b: readonly string[]): boolean {
@@ -183,6 +204,7 @@ export function createUiStore(): UseBoundStore<StoreApi<UiState>> {
     hintDismissed: false,
     drag: null,
     dropHint: null,
+    snapGuides: [],
 
     pushToast(input) {
       nextToast += 1
@@ -300,6 +322,10 @@ export function createUiStore(): UseBoundStore<StoreApi<UiState>> {
       set((state) =>
         state.drag === null && state.dropHint === null ? state : { drag: null, dropHint: null }
       )
+    },
+
+    setSnapGuides(guides) {
+      set((state) => (sameGuides(state.snapGuides, guides) ? state : { snapGuides: guides }))
     }
   }))
 }

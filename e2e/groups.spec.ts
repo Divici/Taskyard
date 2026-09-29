@@ -52,7 +52,7 @@ test('a group: create → rename → resize → roll up → restart → it is al
     await expect(page.getByRole('option', { name: 'Plan', exact: true })).toBeVisible()
 
     // Create: desktop menu → New group here, at the click point, 280 × 200, rename open.
-    await page.mouse.click(600, 400, { button: 'right' })
+    await page.mouse.click(608, 400, { button: 'right' })
     await page.getByRole('menuitem', { name: 'New group here' }).click()
     const rename = page.getByRole('textbox', { name: 'Rename group New group' })
     await expect(rename).toBeFocused()
@@ -62,28 +62,28 @@ test('a group: create → rename → resize → roll up → restart → it is al
     await page.keyboard.press('Enter')
     const group = page.getByRole('region', { name: 'Work' })
     await expect(group).toBeVisible()
-    expect(await box(group)).toEqual({ x: 600, y: 400, width: 280, height: 200 })
+    expect(await box(group)).toEqual({ x: 608, y: 400, width: 280, height: 200 })
     await expect(group.getByText('Drop icons here')).toBeVisible()
 
-    // Resize from the bottom-right handle: +104, +56 (on the 8 px grid).
+    // Resize from the bottom-right handle: +104, +56 (on the default 16 px grid).
     const handle = await center(group.locator('[data-resize-edge="se"]'))
     await page.mouse.move(handle.x, handle.y)
     await page.mouse.down()
     await page.mouse.move(handle.x + 52, handle.y + 28, { steps: 4 })
     await page.mouse.move(handle.x + 104, handle.y + 56, { steps: 4 })
     await page.mouse.up()
-    await expect.poll(async () => box(group)).toEqual({ x: 600, y: 400, width: 384, height: 256 })
+    await expect.poll(async () => box(group)).toEqual({ x: 608, y: 400, width: 384, height: 256 })
 
     // Roll up: double-click the title; only the 36 px header is left, the width is kept.
     await group.getByRole('heading', { name: 'Work' }).dblclick()
-    await expect.poll(async () => box(group)).toEqual({ x: 600, y: 400, width: 384, height: 36 })
+    await expect.poll(async () => box(group)).toEqual({ x: 608, y: 400, width: 384, height: 36 })
     await expect(group.getByRole('button', { name: 'Roll down' })).toBeVisible()
 
     // Saved (debounced atomic write in main).
     await expect
       .poll(() => savedGroups(profile))
       .toEqual([
-        expect.objectContaining({ title: 'Work', x: 600, y: 400, w: 384, h: 256, rolledUp: true })
+        expect.objectContaining({ title: 'Work', x: 608, y: 400, w: 384, h: 256, rolledUp: true })
       ])
 
     // Restart: the same group, rolled up, where it was.
@@ -92,9 +92,9 @@ test('a group: create → rename → resize → roll up → restart → it is al
     page = await primaryWindow(app)
     const again = page.getByRole('region', { name: 'Work' })
     await expect(again).toBeVisible()
-    await expect.poll(async () => box(again)).toEqual({ x: 600, y: 400, width: 384, height: 36 })
+    await expect.poll(async () => box(again)).toEqual({ x: 608, y: 400, width: 384, height: 36 })
     await again.getByRole('button', { name: 'Roll down' }).click()
-    await expect.poll(async () => box(again)).toEqual({ x: 600, y: 400, width: 384, height: 256 })
+    await expect.poll(async () => box(again)).toEqual({ x: 608, y: 400, width: 384, height: 256 })
   } finally {
     await app?.close()
     profile.dispose()

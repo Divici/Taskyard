@@ -3,11 +3,18 @@ import type { Size } from '@shared/geometry'
 import type { GroupSort, Point, Rect } from '@shared/schema'
 import { useLayoutStore } from '../../stores/layout'
 import type { DropHint } from '../../stores/ui'
-import { resolveGroupDrop } from './group-drop'
+import { groupBodyIds, resolveGroupDrop } from './group-drop'
 
 /** Where dropped items go on this display. */
 export type DropTarget =
-  | { kind: 'group'; groupId: string; index: number | null; beforeId: string | null }
+  | {
+      kind: 'group'
+      groupId: string
+      index: number | null
+      beforeId: string | null
+      /** The group's icons in the order shown when dropped (a reorder starts from it). */
+      shown: string[]
+    }
   | { kind: 'canvas'; anchor: Point }
 
 /** The display a drop lands on, in its window's coordinates. */
@@ -17,18 +24,37 @@ export interface DropPlace {
   cell: Size
 }
 
+/**
+ * A drop on a group. `reorder`: every dragged icon already is in this group, so the drop places
+ * them among its icons whatever its sort (round 2).
+ */
 export function groupTarget(
   groupId: string,
   sort: GroupSort,
   body: HTMLElement | null,
-  point: Point
+  point: Point,
+  reorder = false
 ): DropTarget {
-  return { kind: 'group', groupId, ...resolveGroupDrop(body, point, sort) }
+  return {
+    kind: 'group',
+    groupId,
+    ...resolveGroupDrop(body, point, sort, reorder),
+    shown: body ? groupBodyIds(body) : []
+  }
 }
 
 /** A drop on the desktop: the loose grid cell nearest the pointer. */
 export function canvasTarget(point: Point, place: Pick<DropPlace, 'area' | 'cell'>): DropTarget {
   return { kind: 'canvas', anchor: cellAt(point, place.cell, place.area) }
+}
+
+/** True when every id is already in the group: a drag inside it (a reorder). */
+export function reordersGroup(displayId: number, groupId: string, ids: readonly string[]): boolean {
+  const group = useLayoutStore
+    .getState()
+    .layout.displays.find((entry) => entry.displayId === displayId)
+    ?.groups.find((entry) => entry.id === groupId)
+  return !!group && ids.length > 0 && ids.every((id) => group.items.includes(id))
 }
 
 export function hintOf(target: DropTarget): DropHint {
@@ -39,8 +65,9 @@ export function hintOf(target: DropTarget): DropHint {
 
 /**
  * Puts `ids` (in the order they keep) at `target` on the display — one layout change:
- * - a `manual` group inserts them before the anchor; other sorts append and re-sort (a drop back
- *   into the same sorted group changes nothing);
+ * - a drag inside one group reorders it at the anchor (a sorted group becomes `manual`, starting
+ *   from the order shown; a drop in place changes nothing);
+ * - a `manual` group inserts them before the anchor; other sorts append and re-sort;
  * - the desktop takes them at free grid cells from the anchor (see `looseDropPositions`).
  * They leave every other display too (an Explorer drop's file may already be placed elsewhere).
  */
@@ -56,8 +83,13 @@ export function dropItems(
   if (target.kind === 'group') {
     const group = display.groups.find((entry) => entry.id === target.groupId)
     if (!group) return
+    if (ids.every((id) => group.items.includes(id))) {
+      // No insert point in a sorted group (not a reorder, e.g. an Explorer drop): it stays sorted.
+      if (target.index === null && group.sort !== 'manual') return
+      store.reorderInGroup(place.displayId, group.id, [...ids], target.beforeId, target.shown)
+      return
+    }
     const manual = group.sort === 'manual'
-    if (!manual && ids.every((id) => group.items.includes(id))) return
     store.placeItems(place.displayId, [...ids], {
       groupId: group.id,
       beforeId: manual ? target.beforeId : null

@@ -76,6 +76,34 @@ describe('DesktopCanvas', () => {
     expect(screen.getByRole('region', { name: 'Top' })).toHaveStyle({ zIndex: '2' })
   })
 
+  it('raising a group never moves its element in the DOM (a moved node loses the click: the chevron needed two)', () => {
+    renderCanvas({
+      groups: [
+        makeGroup('a', { title: 'Under', z: 1, x: 40 }),
+        makeGroup('b', { title: 'Over', z: 2, x: 400 })
+      ]
+    })
+    const under = screen.getByRole('region', { name: 'Under' })
+    const parent = under.parentElement!
+    const before = [...parent.children]
+    const moves: MutationRecord[] = []
+    const observer = new MutationObserver((records) => moves.push(...records))
+    observer.observe(parent, { childList: true })
+
+    // The press that starts a click on Under's chevron raises it (pointerdown, capture).
+    const chevron = within(under).getByRole('button', { name: 'Roll up' })
+    fireEvent.pointerDown(chevron, { button: 0 })
+    moves.push(...observer.takeRecords())
+    observer.disconnect()
+
+    expect(under).toHaveStyle({ zIndex: '2' })
+    expect(screen.getByRole('region', { name: 'Over' })).toHaveStyle({ zIndex: '1' })
+    expect(moves).toEqual([])
+    expect([...parent.children]).toEqual(before)
+    fireEvent.click(chevron)
+    expect(displayGroups().find((group) => group.id === 'a')?.rolledUp).toBe(true)
+  })
+
   it('offers the desktop menu', async () => {
     renderCanvas()
     const menu = await openCanvasMenu()
@@ -240,6 +268,135 @@ describe('DesktopCanvas', () => {
     const smaller = { ...PRIMARY_INFO, workArea: { x: 0, y: 0, width: 2400, height: 1200 } }
     act(() => rerender(smaller))
     expect(displayGroups()[0]).toMatchObject({ x: 2100, y: 1000, w: 300, h: 200 })
+  })
+
+  describe('snapping (round 2)', () => {
+    const title = (name: string): HTMLElement =>
+      within(screen.getByRole('region', { name })).getByRole('heading', { name })
+    const guides = (): string[] =>
+      [...document.querySelectorAll<HTMLElement>('[data-snap-guide]')].map(
+        (line) => line.dataset.snapGuide!
+      )
+    const drag = (
+      target: HTMLElement,
+      from: { x: number; y: number },
+      to: { x: number; y: number },
+      altKey = false
+    ): void => {
+      fireEvent.pointerDown(target, { button: 0, pointerId: 1, clientX: from.x, clientY: from.y })
+      fireEvent.pointerMove(target, { pointerId: 1, clientX: to.x, clientY: to.y, altKey })
+    }
+    const release = (target: HTMLElement, at: { x: number; y: number }): void => {
+      fireEvent.pointerUp(target, { pointerId: 1, clientX: at.x, clientY: at.y })
+    }
+    // Neighbour: 600..880 × 400..600.
+    const neighbours = (): SeedOptions => ({
+      groups: [
+        makeGroup('a', { title: 'Moving', x: 40, y: 40, z: 1 }),
+        makeGroup('b', { title: 'Still', x: 600, y: 400, z: 2 })
+      ]
+    })
+
+    it('a moving group is pulled onto a neighbour’s edges within 8 px, with guide lines until release', () => {
+      renderCanvas(neighbours())
+      const bar = title('Moving')
+      // Left edge 40 + 845 = 885 (5 px from the neighbour's right edge); top 40 + 357 = 397.
+      drag(bar, { x: 100, y: 50 }, { x: 945, y: 407 })
+      expect(screen.getByRole('region', { name: 'Moving' })).toHaveStyle({
+        left: '880px',
+        top: '400px'
+      })
+      expect(guides()).toEqual(expect.arrayContaining(['x:880', 'y:400']))
+
+      release(bar, { x: 945, y: 407 })
+      expect(displayGroups().find((group) => group.id === 'a')).toMatchObject({ x: 880, y: 400 })
+      expect(guides()).toEqual([])
+    })
+
+    it('holding Alt moves freely: no magnet, no grid, no guides', () => {
+      renderCanvas(neighbours())
+      const bar = title('Moving')
+      drag(bar, { x: 100, y: 50 }, { x: 945, y: 407 }, true)
+      expect(guides()).toEqual([])
+      release(bar, { x: 945, y: 407 })
+      expect(displayGroups().find((group) => group.id === 'a')).toMatchObject({ x: 885, y: 397 })
+    })
+
+    it('away from other edges it moves in the chosen grid step', () => {
+      renderCanvas({ ...neighbours(), settings: { gridSize: 32 } })
+      const bar = title('Moving')
+      drag(bar, { x: 100, y: 50 }, { x: 195, y: 131 })
+      release(bar, { x: 195, y: 131 })
+      // 40 + 95 = 135 → 128; 40 + 81 = 121 → 128.
+      expect(displayGroups().find((group) => group.id === 'a')).toMatchObject({ x: 128, y: 128 })
+    })
+
+    it('a resized edge is pulled onto a neighbour’s edge', () => {
+      renderCanvas(neighbours())
+      const east = screen
+        .getByRole('region', { name: 'Moving' })
+        .querySelector<HTMLElement>('[data-resize-edge="e"]')!
+      // East edge 320 + 283 = 603 → the neighbour's left edge, 600.
+      drag(east, { x: 318, y: 140 }, { x: 601, y: 140 })
+      expect(guides()).toEqual(['x:600'])
+      release(east, { x: 601, y: 140 })
+      expect(displayGroups().find((group) => group.id === 'a')).toMatchObject({ x: 40, w: 560 })
+      expect(guides()).toEqual([])
+    })
+  })
+
+  describe('rolling down (round 2, Fences-style)', () => {
+    it('a rolled-up bar can sit at the bottom; rolled down it grows upward and comes to the front', async () => {
+      const { user } = renderCanvas({
+        groups: [
+          makeGroup('a', { title: 'Low', x: 40, y: 100, h: 300, z: 1, rolledUp: true }),
+          makeGroup('b', { title: 'Over', x: 40, y: 900, z: 2 })
+        ]
+      })
+      const bar = within(screen.getByRole('region', { name: 'Low' })).getByRole('heading', {
+        name: 'Low'
+      })
+      // Only the 36 px bar has to stay inside: it can go down to 1392 − 36 = 1356.
+      fireEvent.pointerDown(bar, { button: 0, pointerId: 1, clientX: 100, clientY: 110 })
+      fireEvent.pointerMove(bar, { pointerId: 1, clientX: 100, clientY: 1500 })
+      fireEvent.pointerUp(bar, { pointerId: 1, clientX: 100, clientY: 1500 })
+      expect(displayGroups()[0]).toMatchObject({ y: 1356, h: 300, rolledUp: true })
+
+      // Raise the other group, then one click on the chevron rolls Low down, upward and on top.
+      fireEvent.pointerDown(
+        within(screen.getByRole('region', { name: 'Over' })).getByRole('heading')
+      )
+      await user.click(
+        within(screen.getByRole('region', { name: 'Low' })).getByRole('button', {
+          name: 'Roll down'
+        })
+      )
+      expect(displayGroups()[0]).toMatchObject({ rolledUp: false, y: 1092, h: 300 })
+      expect(screen.getByRole('region', { name: 'Low' })).toHaveStyle({
+        top: '1092px',
+        height: '300px',
+        zIndex: '2'
+      })
+    })
+
+    it('the menu’s Roll down and a double-click on the title do the same', async () => {
+      const { user } = renderCanvas({
+        groups: [makeGroup('a', { title: 'Low', x: 40, y: 1300, h: 300, rolledUp: true })]
+      })
+      await user.dblClick(
+        within(screen.getByRole('region', { name: 'Low' })).getByRole('heading', { name: 'Low' })
+      )
+      expect(displayGroups()[0]).toMatchObject({ rolledUp: false, y: 1092 })
+      await user.dblClick(
+        within(screen.getByRole('region', { name: 'Low' })).getByRole('heading', { name: 'Low' })
+      )
+      expect(displayGroups()[0]).toMatchObject({ rolledUp: true, y: 1092 })
+      fireEvent.contextMenu(
+        within(screen.getByRole('region', { name: 'Low' })).getByRole('heading', { name: 'Low' })
+      )
+      await user.click(await screen.findByRole('menuitem', { name: 'Roll down' }))
+      expect(displayGroups()[0]).toMatchObject({ rolledUp: false, y: 1092 })
+    })
   })
 
   it('has no detectable accessibility violations', async () => {

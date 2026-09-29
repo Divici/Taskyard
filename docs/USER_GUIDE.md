@@ -33,11 +33,21 @@ your Desktop folder; an **Undo** toast gives you 6 seconds to take it back.
 - **Make one**: right-click empty desktop › **New group here**, or **right-drag** a box around
   some icons (as in Fences).
 - **Move**: drag the title bar. **Resize**: drag any edge or corner.
-- **Roll up**: double-click the title, or the chevron: only the title bar stays.
+- **Snapping**: while you move or resize, a group's edges and centre line up with the other
+  groups, the tools widget and the screen edges when they come within 8 px — a thin accent guide
+  line shows what it lines up with. Elsewhere it follows the grid (Settings › Snap to grid, in
+  8, 16 or 32 px steps). Hold **Alt** while dragging to place it freely.
+- **Roll up**: one click on the chevron rolls the group up to its title bar; one more click rolls
+  it back down. Double-clicking the title does the same. A group you roll down comes to the front,
+  so it reads over its neighbours; near the bottom of the screen it grows upward instead of
+  running off it.
+- **Reorder icons**: drag an icon to another spot in the same group; an accent bar shows where it
+  lands. A group sorted by name, type or date switches to **Manual** and keeps your order.
 - **Rename**: double-click is roll-up, so use **F2** on the title bar or the group menu.
 - **Group menu** (right-click the title, the **…** button, or **Shift+F10**): rename, roll up,
-  sort by name / type / modified, icon size, move to another display, keep visible during
-  quick-hide, delete (the icons go back to the desktop; no file is deleted).
+  sort by manual / name / type / modified, icon size, move to another display, keep visible during
+  quick-hide, delete (the icons go back to the desktop; no file is deleted). The **Sort by**,
+  **Icon size** and **Move to display** submenus open on hover, on click, or with **→**.
 
 ## Quick-hide and Peek
 
@@ -67,7 +77,7 @@ Right-click empty desktop › **Settings**, or the tray › **Settings…**. Cha
 
 - **Appearance**: theme (System, Dark, Light), glass opacity and blur, emissive glow, accent colour.
   With Windows' "Transparency effects" off, glass turns opaque.
-- **Icons**: icon size, file extensions, snap to grid.
+- **Icons**: icon size, file extensions, snap to grid and its grid size (8, 16 or 32 px).
 - **Behavior**: quick-hide on double-click, the Peek shortcut, Start with Windows, the tools
   widget, timer sound and notification, and **Reduce motion**.
 - **Data**: open the data folder, auto-organize now, reset the layout.

@@ -19,7 +19,9 @@ and a focus timer.
 
 - **Groups on the desktop.** Right-drag on the desktop (or right-click › New group here) to draw a
   named glass group. Move, resize, rename, roll it up to its title bar, sort it, or delete it —
-  deleting a group never deletes files.
+  deleting a group never deletes files. Edges snap into line with the other groups (with a guide
+  line; Alt places freely) on an 8/16/32 px grid, icons reorder by dragging within a group, and a
+  group rolled down near the screen's bottom grows upward, in front of its neighbours.
 - **Drag and drop.** Move one or many icons between groups and the desktop, drop files from
   Explorer (with a 6-second Undo), or drag icons out to other apps.
 - **Quick-hide and Peek.** Double-click empty desktop to hide everything; press the Peek shortcut

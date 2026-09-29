@@ -24,14 +24,17 @@ function createAndRename(displayId: number, rect: Rect, ids: string[] = []): str
   return id
 }
 
-/** "New group here": a 280 × 200 group at the click point, inside the work area. */
+/**
+ * "New group here": a 280 × 200 group at the click point (on the grid when `grid` is the grid
+ * step; null when grid snap is off), inside the work area.
+ */
 export function newGroupAt(
   displayId: number,
   point: Point,
   area: Rect,
-  snap: boolean
+  grid: number | null
 ): string | null {
-  const at = snap ? { x: snapValue(point.x), y: snapValue(point.y) } : point
+  const at = grid === null ? point : { x: snapValue(point.x, grid), y: snapValue(point.y, grid) }
   const rect = clampRect({ ...at, ...NEW_GROUP_SIZE }, area)
   return createAndRename(displayId, rect, [])
 }
@@ -44,10 +47,10 @@ export function groupFromMarquee(
   displayId: number,
   marquee: Rect,
   area: Rect,
-  snap: boolean,
+  grid: number | null,
   ids: string[]
 ): string | null {
-  const snapped = snap ? snapRect(marquee) : marquee
+  const snapped = grid === null ? marquee : snapRect(marquee, grid)
   const rect = clampRect(
     {
       ...snapped,

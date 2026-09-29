@@ -220,3 +220,21 @@ describe('ui store — drag and drop (Phase 8)', () => {
     expect(store.getState().dropHint).toBeNull()
   })
 })
+
+describe('ui store — snap guides (round 2)', () => {
+  it('holds the guide lines of the move or resize in progress, notifying only on a change', () => {
+    const store = createUiStore()
+    const listener = vi.fn()
+    store.subscribe(listener)
+    expect(store.getState().snapGuides).toEqual([])
+
+    const guide = { axis: 'x' as const, at: 680, from: 100, to: 300 }
+    store.getState().setSnapGuides([guide])
+    store.getState().setSnapGuides([{ ...guide }])
+    expect(store.getState().snapGuides).toEqual([guide])
+    store.getState().setSnapGuides([])
+    store.getState().setSnapGuides([])
+    expect(store.getState().snapGuides).toEqual([])
+    expect(listener).toHaveBeenCalledTimes(2)
+  })
+})

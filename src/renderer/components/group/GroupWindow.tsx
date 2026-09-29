@@ -1,6 +1,6 @@
 import { useDroppable } from '@dnd-kit/core'
 import { useMemo, useRef, useState } from 'react'
-import { GROUP_HEADER_HEIGHT, GROUP_MIN_SIZE } from '@shared/group-metrics'
+import { GROUP_HEADER_HEIGHT, GROUP_MIN_SIZE, visibleGroupRect } from '@shared/group-metrics'
 import type { DesktopItem, Group, Rect } from '@shared/schema'
 import { openMenuFromKey } from '../../lib/context-menu-key'
 import { useEntrance } from '../../lib/motion'
@@ -95,7 +95,8 @@ export function GroupWindow({
   )
 
   const drag = useGroupDrag({
-    rect: groupRect(group),
+    // As on screen: a rolled-up group's title bar can go anywhere in the work area.
+    rect: visibleGroupRect(group),
     area,
     snap,
     onDrag: setDraft,
@@ -161,7 +162,7 @@ export function GroupWindow({
           renaming={renaming}
           drag={drag.handlers}
           dragging={drag.dragging}
-          onToggleRollUp={() => layout().toggleRollUp(displayId, group.id)}
+          onToggleRollUp={() => layout().toggleRollUp(displayId, group.id, area)}
           onOpenMenu={openMenu}
           onRename={() => useUiStore.getState().startRename({ kind: 'group', id: group.id })}
           onRenameCommit={(title) => {

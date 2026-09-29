@@ -166,6 +166,35 @@ export interface ResizeOptions {
 }
 
 /**
+ * `start` with the dragged edges moved by the pointer delta, each moved edge passed through
+ * `snapEdge` (its axis and raw position → where it goes), then stopped where the rect would get
+ * smaller than `min` and never past the area's edge. The opposite edges stay where they are.
+ */
+export function resizeEdges(
+  start: Rect,
+  edge: ResizeEdge,
+  dx: number,
+  dy: number,
+  min: Size,
+  area: Rect,
+  snapEdge: (axis: 'x' | 'y', value: number) => number
+): Rect {
+  let left = start.x
+  let top = start.y
+  let right = start.x + start.width
+  let bottom = start.y + start.height
+  if (edge.includes('e')) {
+    right = clamp(snapEdge('x', right + dx), left + min.width, area.x + area.width)
+  }
+  if (edge.includes('w')) left = clamp(snapEdge('x', left + dx), area.x, right - min.width)
+  if (edge.includes('s')) {
+    bottom = clamp(snapEdge('y', bottom + dy), top + min.height, area.y + area.height)
+  }
+  if (edge.includes('n')) top = clamp(snapEdge('y', top + dy), area.y, bottom - min.height)
+  return { x: left, y: top, width: right - left, height: bottom - top }
+}
+
+/**
  * `start` with the dragged edges moved by the pointer delta: a moved edge snaps to the grid when
  * asked, stops where the rect would get smaller than `min`, and never passes the area's edge.
  * The opposite edges stay where they are.
@@ -177,16 +206,9 @@ export function resizeRect(
   dy: number,
   { min, area, snap }: ResizeOptions
 ): Rect {
-  const s = (value: number): number => (snap ? snapValue(value) : value)
-  let left = start.x
-  let top = start.y
-  let right = start.x + start.width
-  let bottom = start.y + start.height
-  if (edge.includes('e')) right = clamp(s(right + dx), left + min.width, area.x + area.width)
-  if (edge.includes('w')) left = clamp(s(left + dx), area.x, right - min.width)
-  if (edge.includes('s')) bottom = clamp(s(bottom + dy), top + min.height, area.y + area.height)
-  if (edge.includes('n')) top = clamp(s(top + dy), area.y, bottom - min.height)
-  return { x: left, y: top, width: right - left, height: bottom - top }
+  return resizeEdges(start, edge, dx, dy, min, area, (_axis, value) =>
+    snap ? snapValue(value) : value
+  )
 }
 
 /** The display's work area in its desktop window's coordinates (origin at the display's corner). */

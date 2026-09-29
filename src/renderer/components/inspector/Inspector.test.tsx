@@ -147,6 +147,21 @@ describe('Inspector', () => {
       expect(current().iconSize).toBe('large')
     })
 
+    it('round 2: the grid step is a radio group (8 / 16 / 32 px), shown while snapping is on', async () => {
+      const { bridge, panel, user } = setup()
+      const step = within(panel).getByRole('radiogroup', { name: 'Grid size' })
+      expect(within(step).getByRole('radio', { name: '16 px' })).toBeChecked()
+
+      await user.click(within(step).getByRole('radio', { name: '32 px' }))
+      expect(current().gridSize).toBe(32)
+      await waitFor(() => expect(lastSavedSettings(bridge)?.gridSize).toBe(32))
+      await user.click(within(step).getByRole('radio', { name: '8 px' }))
+      expect(current().gridSize).toBe(8)
+
+      await user.click(within(panel).getByRole('switch', { name: 'Snap to grid' }))
+      expect(within(panel).queryByRole('radiogroup', { name: 'Grid size' })).toBeNull()
+    })
+
     it.each([
       ['Show file extensions', 'showExtensions', false],
       ['Snap to grid', 'gridSnap', true],

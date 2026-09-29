@@ -62,6 +62,18 @@ describe('groupBodyGrid / resolveGroupDrop', () => {
     })
   })
 
+  it('round 2: a drag inside a sorted group (reorder) gets the index under the point too', () => {
+    const element = body(['1:1', '1:2', '1:3'])
+    expect(resolveGroupDrop(element, { x: 200, y: 60 }, 'name', true)).toEqual({
+      index: 1,
+      beforeId: '1:2'
+    })
+    expect(resolveGroupDrop(null, { x: 200, y: 60 }, 'name', true)).toEqual({
+      index: null,
+      beforeId: null
+    })
+  })
+
   it('other sorts and rolled-up groups (no body) append: the group re-sorts itself', () => {
     expect(resolveGroupDrop(body(['1:1']), { x: 110, y: 60 }, 'name')).toEqual({
       index: null,

@@ -189,6 +189,8 @@ export const SettingsFileSchema = z.object({
   timerSound: z.boolean().default(S.timerSound),
   timerNotify: z.boolean().default(S.timerNotify),
   gridSnap: z.boolean().default(S.gridSnap),
+  // Round 2: the grid step (px). A default, not a version bump: older files parse as 16.
+  gridSize: z.union([z.literal(8), z.literal(16), z.literal(32)]).default(S.gridSize),
   firstRunDone: z.boolean().default(S.firstRunDone),
   // Phase 12, R7: the motion kill switch. A default, not a version bump: older files parse as off.
   reduceMotion: z.boolean().default(S.reduceMotion)

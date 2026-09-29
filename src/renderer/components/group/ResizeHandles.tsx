@@ -1,7 +1,10 @@
 import { useRef } from 'react'
 import { resizeRect, type ResizeEdge, type Size } from '@shared/geometry'
 import type { Rect } from '@shared/schema'
+import { snapResize, type SnapOptions } from '@shared/snapping'
 import { cn } from '../../lib/utils'
+import { useUiStore } from '../../stores/ui'
+import { snapOptionsFor } from './snap-targets'
 
 export interface ResizeHandlesProps {
   /** The rect the group has now (its full height, even when rolled up). */
@@ -9,6 +12,7 @@ export interface ResizeHandlesProps {
   /** The work area the group must stay inside (window coordinates). */
   area: Rect
   min: Size
+  /** Grid snap (Settings); the step is Settings' grid size. Edges always align (Alt: never). */
   snap: boolean
   /** Rolled up: only the side handles (the width can change, the height is kept). */
   rolledUp: boolean
@@ -44,10 +48,12 @@ interface Drag {
   startY: number
   start: Rect
   last: Rect
+  snapping: SnapOptions
 }
 
 function Handle({ edge, ...props }: ResizeHandlesProps & { edge: ResizeEdge }): React.JSX.Element {
   const drag = useRef<Drag | null>(null)
+  const end = (): void => useUiStore.getState().setSnapGuides([])
 
   return (
     <div
@@ -65,26 +71,29 @@ function Handle({ edge, ...props }: ResizeHandlesProps & { edge: ResizeEdge }): 
           startX: event.clientX,
           startY: event.clientY,
           start: props.rect,
-          last: props.rect
+          last: props.rect,
+          snapping: snapOptionsFor(event.currentTarget, props.area, props.snap)
         }
         props.onResizeStart?.()
       }}
       onPointerMove={(event) => {
         const current = drag.current
         if (!current || current.pointerId !== event.pointerId) return
-        current.last = resizeRect(
-          current.start,
-          edge,
-          event.clientX - current.startX,
-          event.clientY - current.startY,
-          { min: props.min, area: props.area, snap: props.snap }
-        )
+        const dx = event.clientX - current.startX
+        const dy = event.clientY - current.startY
+        // Alt: free, no magnet and no grid.
+        const snapped = event.altKey
+          ? { rect: resizeRect(current.start, edge, dx, dy, { ...props, snap: false }), guides: [] }
+          : snapResize(current.start, edge, dx, dy, { ...current.snapping, min: props.min })
+        current.last = snapped.rect
+        useUiStore.getState().setSnapGuides(snapped.guides)
         props.onResize(current.last)
       }}
       onPointerUp={(event) => {
         const current = drag.current
         if (!current || current.pointerId !== event.pointerId) return
         drag.current = null
+        end()
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
           event.currentTarget.releasePointerCapture(event.pointerId)
         }
@@ -93,6 +102,7 @@ function Handle({ edge, ...props }: ResizeHandlesProps & { edge: ResizeEdge }): 
       onPointerCancel={() => {
         const current = drag.current
         drag.current = null
+        end()
         if (current) props.onResizeEnd(current.start)
       }}
     />
@@ -101,8 +111,9 @@ function Handle({ edge, ...props }: ResizeHandlesProps & { edge: ResizeEdge }): 
 
 /**
  * The 8 resize handles of a group (or the tools widget): pointer-captured drags that resize
- * live, stop at the minimum size, stay inside the work area and snap to 8 px when grid snap is
- * on. `pointerdown` stops propagating, so dnd-kit's sensor never sees a resize.
+ * live, stop at the minimum size and stay inside the work area; a dragged edge pulls onto other
+ * windows' and the work area's edges (with a guide line), else snaps to the grid when grid snap
+ * is on; holding Alt resizes freely. `pointerdown` stops propagating, so dnd-kit's sensor never sees a resize.
  */
 export function ResizeHandles(props: ResizeHandlesProps): React.JSX.Element {
   const edges = props.rolledUp ? SIDE_EDGES : ALL_EDGES

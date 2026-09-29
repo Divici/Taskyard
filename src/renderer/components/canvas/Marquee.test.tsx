@@ -13,7 +13,8 @@ const LOOSE = { '1:1': { x: 0, y: 0 }, '1:2': { x: 0, y: 96 }, '1:3': { x: 400, 
 
 function renderCanvas(): HTMLElement {
   installFakeBridge()
-  seedCanvas({ items: ITEMS, loose: LOOSE })
+  // An 8 px grid (Settings › Grid size), as these expectations were measured on.
+  seedCanvas({ items: ITEMS, loose: LOOSE, settings: { gridSize: 8 } })
   render(
     <main>
       <DesktopCanvas displayId={1} info={PRIMARY_INFO} />
