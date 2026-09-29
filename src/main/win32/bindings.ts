@@ -55,6 +55,8 @@ export interface Win32Bindings {
   UnhookWinEvent(hook: bigint): boolean
   /** Phase 12: `GetWindowThreadProcessId`'s process id (0 for a window that is gone). */
   processIdOf(hwnd: Hwnd): number
+  /** Phase 4: `GetClassNameW` ('' for a window that is gone). */
+  className(hwnd: Hwnd): string
   SystemParametersInfoW(
     action: number,
     uiParam: number,
@@ -187,6 +189,9 @@ export function loadWin32Bindings(koffi: Koffi): Win32Bindings {
     'uint32_t __stdcall GetWindowThreadProcessId(void *hwnd, _Out_ uint32_t *pid)'
   )
   const IsWindowVisible = toBool(user32.func('int __stdcall IsWindowVisible(void *hwnd)'))
+  const GetClassNameW = user32.func(
+    'int __stdcall GetClassNameW(void *hwnd, _Out_ uint16_t *name, int max)'
+  )
   const IsIconic = toBool(user32.func('int __stdcall IsIconic(void *hwnd)'))
   const GetWindowRect = toBool(
     user32.func('__stdcall', 'GetWindowRect', 'int', ['void *', koffi.out(koffi.pointer(RECT))])
@@ -240,6 +245,12 @@ export function loadWin32Bindings(koffi: Koffi): Win32Bindings {
       const pid: [number] = [0]
       GetWindowThreadProcessId(hwnd, pid)
       return pid[0]
+    },
+    className: (hwnd) => {
+      // Class names are at most 256 characters.
+      const name = new Uint16Array(257)
+      const length = GetClassNameW(hwnd, name, name.length) as number
+      return String.fromCharCode(...name.subarray(0, Math.max(0, length)))
     },
     SystemParametersInfoW: toBool(
       user32.func(

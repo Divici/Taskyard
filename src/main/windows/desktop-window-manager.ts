@@ -24,6 +24,13 @@ export const ZORDER_POLL_MS = 500
  * made on the foreground event alone finds nothing wrong; this second look catches the raise.
  */
 export const FOREGROUND_SETTLE_MS = 150
+/**
+ * Native menus, Phase 4: while a native menu is held (open, or its chosen command running), a
+ * foreign foreground is judged this long after it came. A window of the command's that stays (a
+ * Delete confirmation) then ends the Peek, so it is not hidden under it; one that only passes
+ * through the foreground (Delete's progress window, measured) does not.
+ */
+export const MENU_FOREGROUND_SETTLE_MS = 500
 /** A display's window destroyed from outside is recreated at most this many times … */
 export const RECREATE_LIMIT = 5
 /** … within this long; past that the recreation loop is logged and paused … */
@@ -117,12 +124,13 @@ export interface DesktopWindowManager extends DisplaySource, IpcEventEmitter {
   /** Restarts the idle timer (Phase 9: pointer or keyboard activity during Peek). */
   noteActivity(): void
   /**
-   * Phase 3: a native menu of the shell-menu helper is open (or about to open). Until the
-   * returned release runs, foreground changes never end a Peek — the helper's owner window holds
-   * the foreground for the menu, and a command it runs may pass it on (Paste does) before the
-   * helper gives it back — and the idle timer waits. When the last hold is released, the window
-   * that has the foreground then is judged as usual (another app's ends the Peek: e.g. the user
-   * dismissed the menu by clicking it). Never starts a Peek. Releasing twice is harmless.
+   * Phase 3: a native menu of the shell-menu helper is open (or about to open), until the
+   * returned release runs (after its chosen command ran). Meanwhile the idle timer waits, and a
+   * foreground change is judged only once it has settled (MENU_FOREGROUND_SETTLE_MS, Phase 4): a
+   * window that stays in front — another app the user clicked, a Delete confirmation the command
+   * shows — ends the Peek; one that only passes through does not. The helper's hidden owner
+   * window never ends it (`isShellMenuOwner`). When the last hold is released, the window that
+   * has the foreground then is judged at once. Never starts a Peek. Releasing twice is harmless.
    */
   holdForMenu(): () => void
   /** Shows and re-seats (or re-raises while peeking) every ready window. */
@@ -145,7 +153,7 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
 
   const byDisplay = new Map<number, DesktopWindow>()
   const holds = new Set<PeekHold>()
-  /** Phase 3: open native menus (holdForMenu): no foreground change ends a Peek meanwhile. */
+  /** Phase 3: open native menus (holdForMenu): foreground changes are judged once settled. */
   const menuHolds = new Set<symbol>()
   let peeking = false
   let quitting = false
@@ -170,6 +178,8 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
   const pendingTimers = new Set<ReturnType<typeof setTimeout>>()
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   let settleTimer: ReturnType<typeof setTimeout> | null = null
+  /** Phase 4: the pending judgement of a foreground change seen while a menu is held. */
+  let menuJudgeTimer: ReturnType<typeof setTimeout> | null = null
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let unwatchForeground: Unsubscribe | null = null
   let started = false
@@ -354,6 +364,7 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
     holds.clear()
     idlePausers.clear()
     clearIdle()
+    clearMenuJudge()
     if (!peeking) return
     peeking = false
     for (const desktop of readyWindows()) {
@@ -432,22 +443,39 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
 
   /**
    * Phase 9: another app came to the front (a taskbar button, Alt+Tab) — the user has left the
-   * Peek, so it ends. Our own windows and the shell window (Win+D) do not end it, nothing does
-   * while a native menu is open (Phase 3, holdForMenu: judged when it closes), nor (Phase 12)
+   * Peek, so it ends. Our own windows and the shell window (Win+D) do not end it, nor (Phase 12)
    * the tray (the taskbar, its overflow flyout, or our own tray icon window while the tray menu
    * is open): using Taskyard's tray icon focuses them first, and ending the Peek there would make
-   * the tray's Peek toggle turn it straight back on.
+   * the tray's Peek toggle turn it straight back on. Native menus: the shell-menu helper's hidden
+   * owner window (it has the foreground while its menu is open, and until the helper hands the
+   * keyboard back) does not end it either — but a window a chosen command opens does, even while
+   * the menu is still held (Phase 4, judged once settled: a Delete confirmation is modal inside the
+   * invoke, and a topmost Peek would hide it).
    */
   const endPeekOnForeignForeground = (hwnd: Hwnd | null): void => {
-    if (!peeking || menuHolds.size > 0 || hwnd === null || hwnd === api.getShellWindow()) return
+    if (!peeking || hwnd === null || hwnd === api.getShellWindow()) return
     if (all().some((desktop) => desktop.hwnd === hwnd)) return
-    if (api.isTrayWindow(hwnd)) return
+    if (api.isTrayWindow(hwnd) || api.isShellMenuOwner(hwnd)) return
     log.info('peek: another app took the foreground, unpeeking')
     peek(false)
   }
 
+  const clearMenuJudge = (): void => {
+    if (menuJudgeTimer !== null) clearTimeout(menuJudgeTimer)
+    menuJudgeTimer = null
+  }
+
   const onForeground = (hwnd: Hwnd | null = null): void => {
-    endPeekOnForeignForeground(hwnd)
+    if (menuHolds.size > 0) {
+      // A native menu is held: judge whoever has the foreground once it has settled.
+      clearMenuJudge()
+      menuJudgeTimer = setTimeout(() => {
+        menuJudgeTimer = null
+        endPeekOnForeignForeground(api.foregroundWindow())
+      }, MENU_FOREGROUND_SETTLE_MS)
+    } else {
+      endPeekOnForeignForeground(hwnd)
+    }
     checkSeating('foreground')
     if (settleTimer !== null) clearTimeout(settleTimer)
     settleTimer = setTimeout(() => {
@@ -561,6 +589,7 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
     },
 
     dispose() {
+      clearMenuJudge()
       if (!started) return
       started = false
       stopWatching()
@@ -599,7 +628,8 @@ export function createDesktopWindowManager(deps: DesktopWindowManagerDeps): Desk
       return () => {
         if (!menuHolds.delete(hold) || menuHolds.size > 0) return
         scheduleIdle()
-        // The menu closed: whoever has the foreground now is judged (it was not, meanwhile).
+        // The menu closed (and its command ran): whoever has the foreground now is judged.
+        clearMenuJudge()
         endPeekOnForeignForeground(api.foregroundWindow())
       }
     },

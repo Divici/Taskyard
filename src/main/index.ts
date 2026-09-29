@@ -228,6 +228,9 @@ function startPrimaryInstance(): void {
       // The scripted fake (e2e) never reaches the real shell.
       desktopViewCommand: (command) =>
         scriptedShellMenu ? true : (win32Api?.desktopViewCommand(command) ?? false),
+      // Phase 4: icon menus name ids; their paths come from main's own desktop model.
+      // (Before the first scan there are no icons to right-click: nothing is known.)
+      itemPaths: (ids) => ids.map((id) => desktopFiles?.pathsOf([id])[0] ?? null),
       log
     })
   )

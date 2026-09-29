@@ -86,7 +86,9 @@ describe('createHelperCore', () => {
   it('invokes a chosen shell verb in the helper and reports it', () => {
     const { api, posted, core } = setup({ choose: (menu) => findItem(menu, 'Delete')!.id })
     core.handle(show(3, { target: FILES }))
-    expect(posted[1]).toEqual({
+    // Phase 4 review: main hears the menu closed and the command runs before it runs.
+    expect(posted[1]).toEqual({ type: 'invoking', id: 3 })
+    expect(posted[2]).toEqual({
       type: 'result',
       id: 3,
       result: {
@@ -97,9 +99,10 @@ describe('createHelperCore', () => {
     expect(api.invoked).toEqual([{ target: FILES, verb: 'delete' }])
   })
 
-  it('hands an intercepted verb back without invoking it', () => {
+  it('hands an intercepted verb back without invoking it (and never says it is invoking)', () => {
     const { api, posted, core } = setup({ choose: (menu) => findItem(menu, 'Rename')!.id })
     core.handle(show(4, { target: FILES }))
+    expect(posted.map((message) => message.type)).toEqual(['showing', 'result'])
     expect(posted[1]).toEqual({
       type: 'result',
       id: 4,
@@ -178,7 +181,8 @@ describe('createHelperCore', () => {
       new ComError('IContextMenu::InvokeCommand failed: HRESULT 0x80070005', 0x80070005 | 0)
     )
     core.handle(show(11, { target: FILES }))
-    expect(posted[1]).toEqual({
+    expect(posted.map((message) => message.type)).toEqual(['showing', 'invoking', 'result'])
+    expect(posted[2]).toEqual({
       type: 'result',
       id: 11,
       result: {
@@ -198,7 +202,7 @@ describe('createHelperCore', () => {
     const { api, posted, core } = setup({ choose: (menu) => findItem(menu, 'Delete')!.id })
     api.failNextInvoke(new ComError('cancelled', HRESULT_ERROR_CANCELLED))
     core.handle(show(12, { target: FILES }))
-    expect(posted[1]).toMatchObject({
+    expect(posted[2]).toMatchObject({
       result: { outcome: { kind: 'invoked', verb: 'delete' } }
     })
   })

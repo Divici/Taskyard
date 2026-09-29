@@ -31,6 +31,11 @@ export const FOREGROUND_REFUSED =
 
 /** HRESULT_FROM_WIN32(ERROR_CANCELLED): the user cancelled a UAC prompt or a dialog. */
 export const HRESULT_ERROR_CANCELLED = 0x800704c7 | 0
+/**
+ * COPYENGINE_E_USER_CANCELLED: the user answered No / Cancel in a file operation's own dialog
+ * (measured: No in Shift+Delete's "permanently delete?" confirmation). Also a cancel, not a failure.
+ */
+export const HRESULT_COPYENGINE_USER_CANCELLED = 0x80270000 | 0
 
 const normalLabel = (label: string): string => splitMenuText(label).label.trim().toLowerCase()
 
@@ -78,6 +83,23 @@ export function resolveLabels(
     if (item.kind !== 'item' || !item.labelFrom) return item
     return { ...item, label: labelFor(tree, item.labelFrom) ?? item.label }
   })
+}
+
+/**
+ * Taskyard items as they go into the shell menu: an item whose `unlessVerb` the shell menu has
+ * (at any depth — e.g. Windows' own "Copy as path") is left out, and every `labelFrom` is resolved.
+ */
+export function resolveTaskyardItems(
+  items: TaskyardMenuItem[],
+  tree: ShellMenuItem[]
+): TaskyardMenuItem[] {
+  const keep = (list: TaskyardMenuItem[]): TaskyardMenuItem[] =>
+    list.flatMap((item): TaskyardMenuItem[] => {
+      if (item.kind === 'submenu') return [{ ...item, items: keep(item.items) }]
+      if (item.kind === 'item' && item.unlessVerb && findVerb(tree, item.unlessVerb)) return []
+      return [item]
+    })
+  return resolveLabels(keep(items), tree)
 }
 
 export interface PlacedReplacement {
@@ -181,10 +203,10 @@ export function shapeMenu(
   idByCommand: Map<number, string>
 } {
   const placed = placeTaskyardMenus(
-    resolveLabels(request.taskyardItems, shellTree),
+    resolveTaskyardItems(request.taskyardItems, shellTree),
     request.replaceSubmenus.map((replacement) => ({
       ...replacement,
-      items: resolveLabels(replacement.items, shellTree)
+      items: resolveTaskyardItems(replacement.items, shellTree)
     }))
   )
   const shell = pruneMenu(replaceSubmenus(shellTree, placed.replacements), request)
@@ -203,10 +225,14 @@ export function shapeMenu(
 }
 
 function isCancelled(error: unknown): boolean {
-  return error instanceof ComError && error.hresult === HRESULT_ERROR_CANCELLED
+  return (
+    error instanceof ComError &&
+    (error.hresult === HRESULT_ERROR_CANCELLED ||
+      error.hresult === HRESULT_COPYENGINE_USER_CANCELLED)
+  )
 }
 
-/** Runs an invoke; a cancel (ERROR_CANCELLED) is not a failure, anything else is rethrown. */
+/** Runs an invoke; a cancel (ERROR_CANCELLED, a declined file-operation dialog) is not a failure. */
 export function runInvoke(run: () => void): void {
   try {
     run()
@@ -241,11 +267,13 @@ export function resolveShown(
 
 /**
  * Invoked verbs after which Taskyard takes the keyboard back: nothing of Windows' opens, and the
- * user goes on in Taskyard (inline rename of a new folder or ShellNew file; Ctrl+V after a copy).
- * Not Paste: run in the helper, its copy window takes the foreground and, when it closes, Windows
- * hands it to the next app (measured) — the desktop menu's Paste is intercepted instead.
+ * user goes on in Taskyard (inline rename of a new folder or ShellNew file; Ctrl+V after a copy;
+ * Phase 4: arrow keys after an icon's Delete or Create shortcut — measured: both leave the helper's
+ * hidden owner window holding the foreground, and a confirmation they show is modal inside the
+ * invoke). Not Paste: run in the helper, its copy window takes the foreground and, when it closes,
+ * Windows hands it to the next app (measured) — the desktop menu's Paste is intercepted instead.
  */
-const FOCUS_RETURN_VERBS = new Set(['NewFolder', 'copy', 'cut', 'copyaspath'])
+const FOCUS_RETURN_VERBS = new Set(['NewFolder', 'copy', 'cut', 'copyaspath', 'delete', 'link'])
 
 /**
  * Phase 3: whether the foreground goes back to the Taskyard window once the menu closed with
@@ -272,4 +300,20 @@ const BACKGROUND_VERB_COMMANDS = new Set(['paste', 'pastelink'])
 /** Whether the chosen shell command is invoked by its verb rather than its command id. */
 export function invokesByVerb(verb: string | null, background: boolean): boolean {
   return background && verb !== null && BACKGROUND_VERB_COMMANDS.has(verb)
+}
+
+/**
+ * Phase 4: an owner window is destroyed OWNER_RETIRE_MS after its menu (dialogs and async verbs
+ * may use it until then). If it still has the foreground by then, nothing of Windows' took it
+ * (Send to ▸ Compressed folder, a command without a verb): the keyboard goes back to the Taskyard
+ * window the menu was opened from — rather than to whichever app Windows would activate next.
+ */
+export function retireFocusTarget(state: {
+  owner: bigint
+  foreground: bigint | null
+  returnFocusTo: bigint | null
+}): bigint | null {
+  return state.returnFocusTo !== null && state.foreground === state.owner
+    ? state.returnFocusTo
+    : null
 }

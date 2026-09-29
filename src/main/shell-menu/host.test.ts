@@ -344,6 +344,147 @@ describe('createShellMenuHost', () => {
     expect(children[0].killed).toBe(false)
   })
 
+  describe('Phase 4 review: a command of the last menu is running (never a dead right-click)', () => {
+    /** A menu on screen whose chosen command the helper now runs (`invoking`). */
+    async function invokingMenu(overrides: Partial<ShellMenuHostDeps> = {}): Promise<{
+      host: ShellMenuHost
+      child: ScriptedChild
+      id: number
+      first: Promise<unknown>
+      cancelMenu: Mock
+    }> {
+      const cancelMenu = vi.fn()
+      const { host, children } = setup({ cancelMenu, ...overrides })
+      const first = host.show(REQUEST)
+      children[0].ready()
+      await flush()
+      const { id } = children[0].last()
+      children[0].reply({ type: 'showing', id, ownerHwnd: '77' })
+      children[0].reply({ type: 'invoking', id })
+      return { host, child: children[0], id, first, cancelMenu }
+    }
+
+    it('rejects a new show at once while the helper runs the last menu’s command (a modal confirmation)', async () => {
+      const { host, child, id, first, cancelMenu } = await invokingMenu()
+      host.cancelShows()
+      // WM_CANCELMODE cannot end a modal dialog: nothing is posted to its owner.
+      expect(cancelMenu).not.toHaveBeenCalled()
+      await expect(host.show({ ...REQUEST, point: { x: 5, y: 5 } })).rejects.toMatchObject({
+        code: 'request-failed'
+      })
+      expect(child.posted.map((m) => m.type)).toEqual(['show'])
+      // The command's outcome still arrives; the next show goes to the helper as usual.
+      child.reply({
+        type: 'result',
+        id,
+        result: {
+          kind: 'show',
+          outcome: { kind: 'invoked', verb: 'delete', label: 'Delete', path: [] }
+        }
+      })
+      await expect(first).resolves.toMatchObject({ kind: 'invoked', verb: 'delete' })
+      void host.show(REQUEST)
+      await flush()
+      expect(child.posted.map((m) => m.type)).toEqual(['show', 'show'])
+    })
+
+    it('drops show requests already queued when the command starts (no late menu at an old point)', async () => {
+      const cancelMenu = vi.fn()
+      const { host, children } = setup({ cancelMenu })
+      void host.show(REQUEST)
+      children[0].ready()
+      await flush()
+      const { id } = children[0].last()
+      children[0].reply({ type: 'showing', id, ownerHwnd: '77' })
+      const queued = host.show({ ...REQUEST, point: { x: 3, y: 3 } })
+      const listed = host.enumerate({ kind: 'desktop-background' })
+      children[0].reply({ type: 'invoking', id })
+      await expect(queued).rejects.toMatchObject({ code: 'request-failed' })
+      children[0].reply({
+        type: 'result',
+        id,
+        result: { kind: 'show', outcome: { kind: 'dismissed' } }
+      })
+      await flush()
+      // Enumerate and invoke requests still wait their turn.
+      expect(children[0].posted.map((m) => m.type)).toEqual(['show', 'enumerate'])
+      children[0].reply({
+        type: 'result',
+        id: children[0].last().id,
+        result: { kind: 'enumerate', items: [] }
+      })
+      await expect(listed).resolves.toEqual([])
+    })
+
+    it('ignores an invoking message for another request', async () => {
+      const { host, children } = setup()
+      void host.show(REQUEST)
+      children[0].ready()
+      await flush()
+      children[0].reply({ type: 'invoking', id: 999 })
+      const next = host.show(REQUEST)
+      const settled = vi.fn()
+      next.then(settled, settled)
+      await flush()
+      expect(settled).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Phase 4 review: a show request is built when it leaves the queue', () => {
+    it('calls the builder only when the helper takes the request (current paths, not stale ones)', async () => {
+      const { host, children } = setup()
+      const first = host.show(REQUEST)
+      let paths = ['C:/old/a.txt']
+      const build = vi.fn((): ShowMenuRequest => ({
+        ...REQUEST,
+        target: { kind: 'items', paths: [...paths] }
+      }))
+      const second = host.show(build)
+      children[0].ready()
+      await flush()
+      expect(build).not.toHaveBeenCalled()
+      // Renamed while the first menu was open.
+      paths = ['C:/new/a.txt']
+      children[0].reply({
+        type: 'result',
+        id: children[0].last().id,
+        result: { kind: 'show', outcome: { kind: 'dismissed' } }
+      })
+      await first
+      await flush()
+      expect(build).toHaveBeenCalledOnce()
+      expect(children[0].last()).toMatchObject({
+        type: 'show',
+        target: { kind: 'items', paths: ['C:/new/a.txt'] }
+      })
+      children[0].reply({
+        type: 'result',
+        id: children[0].last().id,
+        result: { kind: 'show', outcome: { kind: 'dismissed' } }
+      })
+      await expect(second).resolves.toEqual({ kind: 'dismissed' })
+    })
+
+    it('rejects with the builder’s own error (nothing is posted) and goes on with the queue', async () => {
+      const { host, children } = setup()
+      const gone = new Error('the item is gone')
+      const failed = host.show(() => {
+        throw gone
+      })
+      const next = host.show(REQUEST)
+      children[0].ready()
+      await expect(failed).rejects.toBe(gone)
+      await flush()
+      expect(children[0].posted.map((m) => m.type)).toEqual(['show'])
+      children[0].reply({
+        type: 'result',
+        id: children[0].last().id,
+        result: { kind: 'show', outcome: { kind: 'dismissed' } }
+      })
+      await expect(next).resolves.toEqual({ kind: 'dismissed' })
+    })
+  })
+
   it('times out a request queued behind an open menu without killing the helper', async () => {
     const { host, children } = setup()
     void host.show(REQUEST)

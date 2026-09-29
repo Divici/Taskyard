@@ -1,7 +1,7 @@
 import { localWorkArea } from '@shared/geometry'
 import { looseCell, type IconSize } from '@shared/group-metrics'
 import { cellAt, looseDropPositions } from '@shared/drop-placement'
-import type { NewItemPlacement, ShellMenuShowResult } from '@shared/ipc'
+import type { NewItemPlacement, ShellMenuShowRequest, ShellMenuShowResult } from '@shared/ipc'
 import type { Point } from '@shared/schema'
 import {
   CANVAS_MENU_IDS,
@@ -46,6 +46,35 @@ export function canvasMenuState(toolsShown: boolean): CanvasMenuState {
   return { iconSize, gridSnap, quickHidden: useUiStore.getState().quickHidden, toolsShown }
 }
 
+/** A Windows item the user chose failed to run: say so (never open another menu instead). */
+export function toastFailedCommand(
+  result: Extract<ShellMenuShowResult, { kind: 'invoke-failed' }>
+): void {
+  useUiStore.getState().pushToast({
+    id: 'shell-menu-failed',
+    tone: 'error',
+    message: `Windows couldn’t complete “${result.label || 'that command'}”.`,
+    description: result.message
+  })
+}
+
+/**
+ * Asks main for a native menu. Null when Taskyard's own menu must open instead: no helper, it
+ * failed or timed out before showing, or main could not be asked at all.
+ */
+export async function askShellMenu(
+  request: ShellMenuShowRequest
+): Promise<Exclude<ShellMenuShowResult, { kind: 'fallback' }> | null> {
+  let result: ShellMenuShowResult
+  try {
+    result = await getBridge().shellMenu.show(request)
+  } catch (error) {
+    console.error('shell-menu: asking main failed', error)
+    return null
+  }
+  return result.kind === 'fallback' ? null : result
+}
+
 /** Runs what the user chose in the native desktop menu (`point`: where it was opened). */
 export function routeCanvasMenuResult(
   result: ShellMenuShowResult,
@@ -57,15 +86,7 @@ export function routeCanvasMenuResult(
     if (result.verb === 'refresh') actions.refresh()
     return
   }
-  if (result.kind === 'invoke-failed') {
-    useUiStore.getState().pushToast({
-      id: 'shell-menu-failed',
-      tone: 'error',
-      message: `Windows couldn’t complete “${result.label || 'that command'}”.`,
-      description: result.message
-    })
-    return
-  }
+  if (result.kind === 'invoke-failed') return toastFailedCommand(result)
   if (result.kind !== 'taskyard') return
   const { id } = result
   const size = ICON_SIZE_BY_ID[id]
@@ -113,20 +134,14 @@ export async function showCanvasShellMenu(
   request: CanvasMenuRequest,
   actions: CanvasMenuActions
 ): Promise<boolean> {
-  let result: ShellMenuShowResult
-  try {
-    result = await getBridge().shellMenu.show({
-      kind: 'background',
-      displayId: request.displayId,
-      point: { ...request.point },
-      extendedVerbs: request.shiftKey,
-      state: canvasMenuState(request.toolsShown)
-    })
-  } catch (error) {
-    console.error('shell-menu: asking main failed', error)
-    return false
-  }
-  if (result.kind === 'fallback') return false
+  const result = await askShellMenu({
+    kind: 'background',
+    displayId: request.displayId,
+    point: { ...request.point },
+    extendedVerbs: request.shiftKey,
+    state: canvasMenuState(request.toolsShown)
+  })
+  if (result === null) return false
   routeCanvasMenuResult(result, request.point, actions)
   return true
 }

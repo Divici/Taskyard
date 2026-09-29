@@ -85,6 +85,12 @@ export interface Win32Api {
    * the icon focuses one of these before the click lands, so a Peek must not end on it.
    */
   isTrayWindow(hwnd: Hwnd): boolean
+  /**
+   * Native menus, Phase 4: `hwnd` is one of the shell-menu helper's hidden owner windows (class
+   * `SHELL_MENU_OWNER_CLASS…`). It holds the foreground while a native menu is open and until the
+   * helper hands the keyboard back, so a Peek never ends on it.
+   */
+  isShellMenuOwner(hwnd: Hwnd): boolean
   /** True when `hwndA` is higher in the z-order than `hwndB`. */
   isAbove(hwndA: Hwnd, hwndB: Hwnd): boolean
   /** `WS_EX_TOPMOST` is set: the window is in the always-on-top band. */

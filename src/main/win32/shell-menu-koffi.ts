@@ -7,6 +7,7 @@ import {
   loadOle32,
   type ComRuntime
 } from './com'
+import { SHELL_MENU_OWNER_CLASS } from './constants'
 import {
   DEFAULT_BACKGROUND_SOURCE,
   menuPaths,
@@ -31,8 +32,9 @@ import {
   invokesByVerb,
   matchesSubmenu,
   placeTaskyardMenus,
-  resolveLabels,
+  resolveTaskyardItems,
   resolveShown,
+  retireFocusTarget,
   returnsFocus,
   runInvoke,
   type PlacedReplacement
@@ -144,7 +146,7 @@ interface BuiltMenu {
 /** Verbs that put files on the OLE clipboard: flushed at once, so they outlive the helper. */
 const CLIPBOARD_VERBS = new Set(['copy', 'cut'])
 
-const OWNER_CLASS = 'TaskyardShellMenuOwner'
+const OWNER_CLASS = SHELL_MENU_OWNER_CLASS
 /** Each api instance registers its own class (a class name is per process; see dispose). */
 let ownerClasses = 0
 /** An owner window outlives its operation this long (dialogs and async verbs may still use it). */
@@ -285,15 +287,27 @@ export function createKoffiShellMenuApi(
     throw new Error('RegisterClassExW failed for the shell-menu owner window')
   }
 
-  /** Owner windows kept alive after their operation, with the time they may be destroyed. */
-  const retiring: { hwnd: bigint; at: number }[] = []
+  /**
+   * Owner windows kept alive after their operation, with the time they may be destroyed and the
+   * Taskyard window a shown menu came from (`returnFocusTo`).
+   */
+  const retiring: { hwnd: bigint; at: number; returnFocusTo: bigint | null }[] = []
+  /** Show requests: the Taskyard window to return to, keyed by their owner window. */
+  const returnTargets = new Map<bigint, bigint>()
   const destroyRetired = (all: boolean): void => {
     const now = Date.now()
     for (let index = retiring.length - 1; index >= 0; index--) {
-      if (all || retiring[index].at <= now) {
-        DestroyWindow(retiring[index].hwnd)
-        retiring.splice(index, 1)
-      }
+      const entry = retiring[index]
+      if (!all && entry.at > now) continue
+      // Still the foreground window: nothing of Windows' took it; Taskyard gets the keyboard.
+      const target = retireFocusTarget({
+        owner: entry.hwnd,
+        foreground: GetForegroundWindow() as bigint | null,
+        returnFocusTo: entry.returnFocusTo
+      })
+      if (target !== null) SetForegroundWindow(target)
+      DestroyWindow(entry.hwnd)
+      retiring.splice(index, 1)
     }
   }
 
@@ -314,7 +328,14 @@ export function createKoffiShellMenuApi(
       null
     ) as bigint | null
     if (!hwnd) throw new Error('CreateWindowExW failed for the shell-menu owner window')
-    scope.add(() => retiring.push({ hwnd, at: Date.now() + OWNER_RETIRE_MS }))
+    scope.add(() => {
+      retiring.push({
+        hwnd,
+        at: Date.now() + OWNER_RETIRE_MS,
+        returnFocusTo: returnTargets.get(hwnd) ?? null
+      })
+      returnTargets.delete(hwnd)
+    })
     return hwnd
   }
 
@@ -791,10 +812,10 @@ export function createKoffiShellMenuApi(
   const shapeBuilt = (built: BuiltMenu, request: ShowMenuRequest): Map<number, string> => {
     const shellTree = readMenu(built, false)
     const placed = placeTaskyardMenus(
-      resolveLabels(request.taskyardItems, shellTree),
+      resolveTaskyardItems(request.taskyardItems, shellTree),
       request.replaceSubmenus.map((replacement) => ({
         ...replacement,
-        items: resolveLabels(replacement.items, shellTree)
+        items: resolveTaskyardItems(replacement.items, shellTree)
       }))
     )
     replaceOnMenu(built, built.menu, [...placed.replacements])
@@ -907,6 +928,9 @@ export function createKoffiShellMenuApi(
     show(request, hooks) {
       return operation((scope) => {
         const built = buildForShow(scope, request)
+        if (request.returnFocusTo !== undefined) {
+          returnTargets.set(built.owner, BigInt(request.returnFocusTo))
+        }
         const idByCommand = shapeBuilt(built, request)
         // Only now (the user right-clicked, the menu is about to show) is the clipboard read.
         setPasteState(scope, built)
@@ -942,6 +966,8 @@ export function createKoffiShellMenuApi(
           background: request.target.kind !== 'items'
         })
         // A failure here is an outcome (the user already chose), a cancel counts as invoked.
+        // Main hears that the menu closed and a command runs (it may block on a dialog).
+        if (resolution.kind === 'invoke') hooks.onInvoking?.()
         const outcome =
           resolution.kind !== 'invoke'
             ? resolution

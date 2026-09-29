@@ -26,7 +26,8 @@ import {
   WM_CANCELMODE,
   WM_NCDESTROY,
   WM_SYSCOMMAND,
-  WM_WINDOWPOSCHANGING
+  WM_WINDOWPOSCHANGING,
+  SHELL_MENU_OWNER_CLASS
 } from './constants'
 import { createKoffiWin32Api, GUARD_SUBCLASS_ID } from './koffi-api'
 
@@ -443,6 +444,23 @@ describe('cancelMenu / desktopViewCommand / foregroundWindow (Phase 3: native me
     expect(api.foregroundWindow()).toBe(APP)
     foreground = null
     expect(api.foregroundWindow()).toBeNull()
+  })
+})
+
+describe('isShellMenuOwner (Phase 4: native menus)', () => {
+  it('recognises the helper’s hidden owner windows by their class name prefix', () => {
+    const classes = new Map<Hwnd, string>([
+      [0x5e11n, `${SHELL_MENU_OWNER_CLASS}.37060.mun9xhsg.1`],
+      [APP, 'Chrome_WidgetWin_1'],
+      [0x77n, `x${SHELL_MENU_OWNER_CLASS}`]
+    ])
+    Object.assign(fb.b, { className: vi.fn((hwnd: Hwnd) => classes.get(hwnd) ?? '') })
+    const api = createApi()
+    expect(api.isShellMenuOwner(0x5e11n)).toBe(true)
+    expect(api.isShellMenuOwner(APP)).toBe(false)
+    expect(api.isShellMenuOwner(0x77n)).toBe(false)
+    // A window that is gone has no class name.
+    expect(api.isShellMenuOwner(0x99n)).toBe(false)
   })
 })
 

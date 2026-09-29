@@ -11,11 +11,12 @@
 
 // Taskyard's entries in a native menu live in src/shared/shell-menu.ts (the renderer and main's
 // menu policy build them too).
-import type {
-  LabelSource,
-  SubmenuMatch,
-  SubmenuReplacement,
-  TaskyardMenuItem
+import {
+  parentFolderKey,
+  type LabelSource,
+  type SubmenuMatch,
+  type SubmenuReplacement,
+  type TaskyardMenuItem
 } from '@shared/shell-menu'
 export type { LabelSource, SubmenuMatch, SubmenuReplacement, TaskyardMenuItem }
 
@@ -125,6 +126,11 @@ export interface EnumerateOptions {
 export interface ShowHooks {
   /** Called right before the menu's modal loop starts, with the window that owns the menu. */
   onShowing(info: { ownerHwnd: bigint }): void
+  /**
+   * Phase 4 review: the menu closed on a shell command, which is invoked right after this call
+   * (it may block: a modal confirmation). Not called for Taskyard items or intercepted verbs.
+   */
+  onInvoking?(): void
 }
 
 export interface ShellMenuApi {
@@ -187,13 +193,6 @@ export function queryFlags(options: {
   )
 }
 
-/** NTFS-style comparison key of a path's parent folder. */
-function parentKey(path: string): string {
-  const normal = path.replace(/\//g, '\\').replace(/\\+$/, '')
-  const cut = normal.lastIndexOf('\\')
-  return (cut < 0 ? '' : normal.slice(0, cut)).toUpperCase()
-}
-
 /**
  * The paths that get one menu: all of them when they share a parent folder (one IShellFolder
  * answers GetUIObjectOf for all), otherwise the right-clicked (first) item alone — the plan's
@@ -208,8 +207,8 @@ export function menuPaths(paths: string[]): string[] {
     seen.add(key)
     return true
   })
-  const parent = parentKey(unique[0])
-  return unique.every((path) => parentKey(path) === parent) ? unique : [unique[0]]
+  const parent = parentFolderKey(unique[0])
+  return unique.every((path) => parentFolderKey(path) === parent) ? unique : [unique[0]]
 }
 
 /** Menu text → what Windows shows: `&x` mnemonics removed (`&&` is a literal `&`), tab split. */

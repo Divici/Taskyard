@@ -27,6 +27,11 @@ export type TaskyardMenuItem =
       /** A radio bullet instead of a tick when checked (e.g. one of Large/Medium/Small icons). */
       radio?: boolean
       labelFrom?: LabelSource
+      /**
+       * Left out when the shell menu has an item with this verb (Phase 4: Taskyard's "Copy path"
+       * only where Windows shows no "Copy as path" of its own).
+       */
+      unlessVerb?: string
     }
   | { kind: 'submenu'; label: string; items: TaskyardMenuItem[] }
   | { kind: 'separator' }
@@ -101,7 +106,7 @@ export interface CanvasMenuState {
 }
 
 /** A show request's shaping fields (main adds the target, point, Shift and focus return). */
-export interface BackgroundMenuPolicy {
+export interface ShellMenuPolicy {
   taskyardItems: TaskyardMenuItem[]
   replaceSubmenus: SubmenuReplacement[]
   hideVerbs: string[]
@@ -135,7 +140,7 @@ const SORT_COLUMNS: readonly [string, string][] = [
  * run in the helper hands the foreground to another app). Everything else — New ▸, Open in
  * Terminal, Display settings, Personalize, shell extensions — runs in Windows (the helper).
  */
-export function backgroundMenuPolicy(state: CanvasMenuState): BackgroundMenuPolicy {
+export function backgroundMenuPolicy(state: CanvasMenuState): ShellMenuPolicy {
   const size = (id: string, label: string, verb: string, value: IconSize): TaskyardMenuItem =>
     item(id, label, { labelFrom: { verb }, radio: true, checked: state.iconSize === value })
   return {
@@ -319,4 +324,85 @@ export function newItemPlacement(verb: string | null): { rename: boolean } | nul
   if (verb === 'NewFolder' || isShellNewVerb(verb)) return { rename: true }
   if (verb === 'NewLink' || verb === 'paste' || verb === 'pastelink') return { rename: false }
   return null
+}
+
+// ---------------------------------------------------------------------------------------------
+// The file menu of desktop icons (Phase 4)
+
+/** Stable ids of Taskyard's items in an icon's native file menu (the renderer routes them). */
+export const ITEM_MENU_IDS = {
+  removeFromGroup: 'item.remove-from-group',
+  copyPath: 'item.copy-path'
+} as const
+
+/** What an icon menu's Taskyard items depend on (the right-clicked icon and its targets). */
+export interface ItemMenuState {
+  /** The right-clicked icon sits in a group ("Remove from group"). */
+  inGroup: boolean
+  /**
+   * Taskyard would rename it inline: one target and not read-only (Public Desktop for a standard
+   * user). Otherwise Windows' Rename is hidden, as Taskyard's own menu disables it.
+   */
+  canRename: boolean
+}
+
+/**
+ * An icon's native file menu as Taskyard shows it: Windows' menu for the items (Open, Open with,
+ * Send to, Cut, Copy, Create shortcut, Delete, Properties, shell extensions — all run by Windows)
+ * with Taskyard's "Remove from group" (in a group) and "Copy path" (only where Windows has no
+ * "Copy as path") on top. Rename is intercepted: Taskyard renames inline, keeping its read-only
+ * rules (hidden when Taskyard would not rename).
+ */
+export function itemMenuPolicy(state: ItemMenuState): ShellMenuPolicy {
+  return {
+    taskyardItems: [
+      ...(state.inGroup ? [item(ITEM_MENU_IDS.removeFromGroup, 'Remove from &group')] : []),
+      item(ITEM_MENU_IDS.copyPath, 'Copy &path', { unlessVerb: 'copyaspath' })
+    ],
+    replaceSubmenus: [],
+    hideVerbs: state.canRename ? [] : ['rename'],
+    hideSubmenus: [],
+    interceptVerbs: ['rename'],
+    interceptSubmenus: []
+  }
+}
+
+/**
+ * The comparison key of a path's parent folder (NTFS-style: case-, slash- and trailing-separator
+ * insensitive). Paths with the same key get one shell menu.
+ */
+export function parentFolderKey(path: string): string {
+  const normal = path.replace(/\//g, '\\').replace(/\\+$/, '')
+  const cut = normal.lastIndexOf('\\')
+  return (cut < 0 ? '' : normal.slice(0, cut)).toUpperCase()
+}
+
+/**
+ * The items an icon's native menu acts on, right-clicked first, Explorer-style: the selection
+ * when it holds the right-clicked icon — if all of it shares one parent folder (the user's
+ * Desktop and the Public Desktop are two; one shell menu needs one folder) — otherwise the
+ * right-clicked icon alone. Selected ids without a known path are skipped.
+ */
+export function itemMenuTargets(
+  clicked: string,
+  selection: readonly string[],
+  pathOf: (id: string) => string | undefined
+): string[] {
+  if (!selection.includes(clicked)) return [clicked]
+  const clickedPath = pathOf(clicked)
+  if (clickedPath === undefined) return [clicked]
+  const parent = parentFolderKey(clickedPath)
+  const others = selection.filter((id) => id !== clicked && pathOf(id) !== undefined)
+  return others.every((id) => parentFolderKey(pathOf(id)!) === parent)
+    ? [clicked, ...others]
+    : [clicked]
+}
+
+/**
+ * Whether an invoked file-menu command makes a Desktop item that belongs at the right-click
+ * point: Create shortcut's new link (next to the original, not renamed — as on Explorer's
+ * desktop). Null for everything else (a Paste on a folder item pastes into that folder).
+ */
+export function itemMenuPlacement(verb: string | null): { rename: boolean } | null {
+  return verb === 'link' ? { rename: false } : null
 }

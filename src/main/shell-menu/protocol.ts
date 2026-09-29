@@ -42,7 +42,8 @@ const taskyardItemSchema: z.ZodType<TaskyardMenuItem> = z.lazy(() =>
       disabled: z.boolean().optional(),
       checked: z.boolean().optional(),
       radio: z.boolean().optional(),
-      labelFrom: labelSourceSchema.optional()
+      labelFrom: labelSourceSchema.optional(),
+      unlessVerb: verbString.optional()
     }),
     z.object({
       kind: z.literal('submenu'),
@@ -145,6 +146,8 @@ const helperMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('fatal'), message: z.string() }),
   /** `ownerHwnd`: the HWND as a decimal string (BigInt does not cross every channel). */
   z.object({ type: z.literal('showing'), id: requestId, ownerHwnd: z.string().regex(/^\d+$/) }),
+  /** Phase 4 review: the menu closed and the chosen shell command runs now (it may block). */
+  z.object({ type: z.literal('invoking'), id: requestId }),
   z.object({
     type: z.literal('result'),
     id: requestId,

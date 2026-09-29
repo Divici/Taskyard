@@ -50,6 +50,11 @@ export const WM_COMMAND = 0x0111
  */
 export const SFVIDM_EDIT_PASTE = 0x701a
 export const SFVIDM_EDIT_UNDO = 0x701b
+/**
+ * Native menus, Phase 4: the window class (a prefix: each helper registers its own name) of the
+ * shell-menu helper's hidden owner windows. Main's Peek never counts one as another app.
+ */
+export const SHELL_MENU_OWNER_CLASS = 'TaskyardShellMenuOwner'
 export const WM_WINDOWPOSCHANGING = 0x0046
 export const WM_NCDESTROY = 0x0082
 export const WM_SYSCOMMAND = 0x0112

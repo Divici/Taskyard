@@ -78,7 +78,16 @@ export interface ShowingInfo {
 export interface ShellMenuHost {
   /** Spawns the helper if needed and resolves once it is ready (pre-warming the first menu). */
   start(): Promise<HelperInfo>
-  show(request: ShowMenuRequest): Promise<ShowMenuOutcome>
+  /**
+   * `request` may be a builder, called when the helper takes the request (not when it is queued),
+   * so what it names — e.g. an icon menu's current paths — is read as late as possible. A builder
+   * that throws rejects the request with its error; nothing is posted.
+   *
+   * Phase 4 review: while the helper runs the command chosen in the previous menu (`invoking`:
+   * a modal confirmation may be up for a long time), a new show is rejected at once
+   * (`request-failed`) so the caller shows its own menu instead of waiting.
+   */
+  show(request: ShowMenuRequest | (() => ShowMenuRequest)): Promise<ShowMenuOutcome>
   enumerate(target: ShellMenuTarget, options?: Partial<EnumerateOptions>): Promise<ShellMenuItem[]>
   invokeVerb(target: ShellMenuTarget, verb: string): Promise<void>
   /**
@@ -95,8 +104,9 @@ export interface ShellMenuHost {
   dispose(): void
 }
 
+type ShowBody = Omit<Extract<HelperRequest, { type: 'show' }>, 'id'>
 type Body =
-  | Omit<Extract<HelperRequest, { type: 'show' }>, 'id'>
+  | ShowBody
   | Omit<Extract<HelperRequest, { type: 'enumerate' }>, 'id'>
   | Omit<Extract<HelperRequest, { type: 'invoke' }>, 'id'>
 
@@ -105,14 +115,18 @@ type Result = Extract<HelperMessage, { type: 'result' }>['result']
 interface Pending {
   id: number
   body: Body
+  /** A show built when the helper takes it (the body until then is a placeholder). */
+  build: (() => Body) | null
   resolve(result: Result): void
-  reject(error: ShellMenuError): void
+  reject(error: Error): void
   timer: ReturnType<typeof setTimeout> | null
   showing: boolean
   /** The menu's owner window once it is on screen. */
   ownerHwnd: bigint | null
   /** cancelShows ran while the helper was building this menu: dismiss it when it shows. */
   cancelOnShow: boolean
+  /** Phase 4 review: its menu closed and the helper runs the chosen command (`invoking`). */
+  invoking: boolean
 }
 
 interface Helper {
@@ -121,6 +135,27 @@ interface Helper {
   exited: boolean
   /** Settles when the helper says ready (or fails to start). */
   ready: Promise<HelperInfo>
+}
+
+/** Why a show is refused while the helper runs the previous menu's command. */
+const commandRunning = (): ShellMenuError =>
+  new ShellMenuError(
+    'request-failed',
+    'the shell-menu helper is running the command chosen in the previous menu'
+  )
+
+/** The body a builder-made show carries until it is built (only its `type` is read before). */
+const PENDING_SHOW: ShowBody = {
+  type: 'show',
+  target: { kind: 'desktop-background' },
+  point: { x: 0, y: 0 },
+  extendedVerbs: false,
+  taskyardItems: [],
+  interceptVerbs: [],
+  interceptSubmenus: [],
+  hideVerbs: [],
+  hideSubmenus: [],
+  replaceSubmenus: []
 }
 
 export function createShellMenuHost(deps: ShellMenuHostDeps): ShellMenuHost {
@@ -141,7 +176,7 @@ export function createShellMenuHost(deps: ShellMenuHostDeps): ShellMenuHost {
     if (index >= 0) queue.splice(index, 1)
   }
 
-  const fail = (pending: Pending, error: ShellMenuError): void => {
+  const fail = (pending: Pending, error: Error): void => {
     settle(pending)
     pending.reject(error)
   }
@@ -243,6 +278,16 @@ export function createShellMenuHost(deps: ShellMenuHostDeps): ShellMenuHost {
         if (active.cancelOnShow) cancelMenu(info.ownerHwnd)
         return
       }
+      case 'invoking': {
+        if (active?.id !== message.id) return
+        active.invoking = true
+        // Shows queued behind it would appear only after the command (a modal dialog may keep
+        // it for minutes), at an old point: their callers show their own menus now.
+        for (const pending of [...queue]) {
+          if (pending.body.type === 'show') fail(pending, commandRunning())
+        }
+        return
+      }
       case 'result':
       case 'error': {
         if (active?.id !== message.id) return
@@ -271,24 +316,38 @@ export function createShellMenuHost(deps: ShellMenuHostDeps): ShellMenuHost {
     const pid = helper.pid
     if (pid === null) return
     const next = queue.shift()!
+    if (next.build !== null) {
+      // Built now, when the helper takes it: what it names is as current as it can be.
+      try {
+        next.body = next.build()
+      } catch (error) {
+        fail(next, error instanceof Error ? error : new Error(String(error)))
+        pump()
+        return
+      }
+    }
     active = next
     if (next.body.type === 'show') deps.allowForeground(pid)
     helper.child.postMessage({ ...next.body, id: next.id })
   }
 
-  const request = (body: Body): Promise<Result> => {
+  const request = (body: Body, build: (() => Body) | null = null): Promise<Result> => {
     if (disposed)
       return Promise.reject(new ShellMenuError('disposed', 'the shell-menu host is disposed'))
+    if (body.type === 'show' && active?.body.type === 'show' && active.invoking)
+      return Promise.reject(commandRunning())
     return new Promise<Result>((resolve, reject) => {
       const pending: Pending = {
         id: nextId++,
         body,
+        build,
         resolve,
         reject,
         timer: null,
         showing: false,
         ownerHwnd: null,
-        cancelOnShow: false
+        cancelOnShow: false,
+        invoking: false
       }
       pending.timer = setTimeout(() => {
         pending.timer = null
@@ -352,7 +411,10 @@ export function createShellMenuHost(deps: ShellMenuHostDeps): ShellMenuHost {
     },
 
     async show(showRequest) {
-      const result = await request({ type: 'show', ...showRequest })
+      const result =
+        typeof showRequest === 'function'
+          ? await request(PENDING_SHOW, () => ({ type: 'show', ...showRequest() }))
+          : await request({ type: 'show', ...showRequest })
       return expectKind(result, 'show').outcome
     },
 
@@ -376,7 +438,8 @@ export function createShellMenuHost(deps: ShellMenuHostDeps): ShellMenuHost {
       for (const pending of [...queue]) {
         if (pending.body.type === 'show') fail(pending, error)
       }
-      if (active?.body.type !== 'show') return
+      // A menu whose command runs is closed; WM_CANCELMODE cannot end a modal dialog anyway.
+      if (active?.body.type !== 'show' || active.invoking) return
       if (active.ownerHwnd !== null) cancelMenu(active.ownerHwnd)
       else active.cancelOnShow = true
     },

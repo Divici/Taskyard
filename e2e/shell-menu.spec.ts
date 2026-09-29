@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import type { LayoutFile, SettingsFile } from '../src/shared/schema'
@@ -198,5 +198,126 @@ test.describe('native desktop menu (scripted helper)', () => {
     const log = profile.readLog()
     expect(log).toContain("shell-menu: no native menu (request-failed); showing Taskyard's menu")
     expect(log).toContain("shell-menu: no native menu (helper-exited); showing Taskyard's menu")
+  })
+})
+
+// Native menus, Phase 4: a right-click on icons shows Windows' file menu for them (scripted).
+test.describe('native icon menus (scripted helper)', () => {
+  let profile: Profile
+  let app: ElectronApplication | undefined
+
+  test.beforeEach(() => {
+    profile = createProfile()
+  })
+  test.afterEach(async () => {
+    await app?.close()
+    app = undefined
+    profile.dispose()
+  })
+
+  async function launchWith(...files: string[]): Promise<Page> {
+    for (const name of files) writeFileSync(join(profile.desktop, name), name)
+    const launched = await launch(profile)
+    app = launched.app
+    const { page } = launched
+    await expect(
+      page.getByRole('option', { name: files[0].replace(/\.txt$/, ''), exact: true })
+    ).toBeVisible()
+    // The first-run card (Phase 11) is not part of these checks.
+    await page.getByRole('button', { name: 'Keep my desktop as it is' }).click()
+    return page
+  }
+
+  const icon = (page: Page, name: string): ReturnType<Page['getByRole']> =>
+    page.getByRole('option', { name, exact: true })
+
+  test('right-click on an icon → Windows’ file menu for its path; Rename opens Taskyard’s inline rename', async () => {
+    const page = await launchWith('Notes.txt')
+    await script(app!, { choose: ['Rename'] })
+
+    await icon(page, 'Notes').click({ button: 'right' })
+
+    const rename = page.getByRole('textbox', { name: 'Rename Notes' })
+    await expect(rename).toBeFocused()
+    await expect(page.getByRole('menu')).toHaveCount(0)
+    const [menu] = await shown(app!)
+    expect(menu.target).toEqual({ kind: 'items', paths: [join(profile.desktop, 'Notes.txt')] })
+    await page.keyboard.type('Journal')
+    await page.keyboard.press('Enter')
+    await expect(icon(page, 'Journal')).toBeVisible()
+    expect(existsSync(join(profile.desktop, 'Journal.txt'))).toBe(true)
+  })
+
+  test('a selection in one folder gets one menu (right-clicked first); Delete runs in Windows', async () => {
+    const page = await launchWith('Notes.txt', 'Plan.txt')
+    await script(app!, { choose: ['Delete'] })
+
+    await icon(page, 'Notes').click()
+    await icon(page, 'Plan').click({ modifiers: ['Control'] })
+    await icon(page, 'Plan').click({ button: 'right' })
+
+    await expect
+      .poll(() => app!.evaluate(() => (globalThis as MainGlobal).__taskyardShellMenu.invoked))
+      .toEqual(['delete'])
+    const [menu] = await shown(app!)
+    expect(menu.target).toEqual({
+      kind: 'items',
+      paths: [join(profile.desktop, 'Plan.txt'), join(profile.desktop, 'Notes.txt')]
+    })
+    // Taskyard asked nothing itself (Windows' Delete has its own confirmation rules).
+    await expect(page.getByRole('alertdialog')).toHaveCount(0)
+    await expect(page.getByRole('menu')).toHaveCount(0)
+  })
+
+  test('in a group: Remove from group (Taskyard’s item on top of Windows’ menu) makes the icon loose', async () => {
+    const page = await launchWith('Notes.txt')
+    const box = (await icon(page, 'Notes').boundingBox())!
+    // A right-drag around the icon puts it in a new group (groups.spec).
+    await page.mouse.move(box.x + box.width + 40, 8)
+    await page.mouse.down({ button: 'right' })
+    await page.mouse.move(4, box.y + box.height + 30, { steps: 8 })
+    await page.mouse.up({ button: 'right' })
+    await page.keyboard.press('Enter')
+    const group = page.getByRole('region', { name: 'New group' })
+    await expect(group.getByRole('option', { name: 'Notes' })).toBeVisible()
+
+    await script(app!, { choose: ['Remove from group'] })
+    await group.getByRole('option', { name: 'Notes' }).click({ button: 'right' })
+
+    await expect(group.getByRole('option')).toHaveCount(0)
+    await expect(
+      page.getByRole('listbox', { name: 'Desktop icons' }).getByRole('option', { name: 'Notes' })
+    ).toBeVisible()
+    await expect(page.getByRole('menu')).toHaveCount(0)
+  })
+
+  test('a failed Windows command shows a toast; a helper failure opens Taskyard’s icon menu there', async () => {
+    const page = await launchWith('Notes.txt')
+    await script(
+      app!,
+      { choose: ['Properties'], failInvoke: 'Access is denied.' },
+      { fail: 'no foreground' }
+    )
+
+    await icon(page, 'Notes').click({ button: 'right' })
+    await expect(page.getByText('Windows couldn’t complete “Properties”.')).toBeVisible()
+    await expect(page.getByRole('menu')).toHaveCount(0)
+
+    const box = (await icon(page, 'Notes').boundingBox())!
+    await page.mouse.click(box.x + 60, box.y + 40, { button: 'right' })
+    const menu = page.getByRole('menu')
+    await expect(menu.getByRole('menuitem', { name: 'Open file location' })).toBeVisible()
+    // At the right-click point (Radix opens a context menu 2 px right of the pointer), once its
+    // opening animation has settled.
+    await expect
+      .poll(async () => {
+        const opened = (await menu.boundingBox())!
+        return [Math.round(opened.x), Math.round(opened.y)]
+      })
+      .toEqual([Math.round(box.x + 60) + 2, Math.round(box.y + 40)])
+    await page.keyboard.press('Escape')
+    expect(profile.readLog()).toContain(
+      "shell-menu: no native menu (request-failed); showing Taskyard's menu"
+    )
   })
 })

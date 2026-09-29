@@ -278,6 +278,7 @@ export function createFakeShellMenuApi(options: FakeShellMenuOptions = {}): Fake
         background: request.target.kind !== 'items'
       })
       const background = request.target.kind !== 'items'
+      if (resolution.kind === 'invoke') hooks.onInvoking?.()
       const outcome =
         resolution.kind !== 'invoke'
           ? resolution

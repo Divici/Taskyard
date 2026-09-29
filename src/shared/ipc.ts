@@ -2,7 +2,7 @@
 // Types and plain constants only: the preload bundles this file, so it must never import zod
 // (inbound validation lives in src/main/ipc/handlers.ts).
 import type { DesktopItem, LayoutFile, Point, Rect, SettingsFile, TasksFile } from './schema'
-import type { CanvasMenuState } from './shell-menu'
+import type { CanvasMenuState, ItemMenuState } from './shell-menu'
 import type { PxRect, WallpaperPosition } from './wallpaper-geometry'
 
 // ---------------------------------------------------------------------------------------------
@@ -444,21 +444,33 @@ export const SHELL_MENU_IPC = {
   available: 'shellMenu:available'
 } as const
 
-/**
- * A right-click (or Shift+F10 / the menu key) on the empty desktop of the calling window. The
- * renderer never names a path: main resolves what the menu is for.
- */
-export interface ShellMenuShowRequest {
-  kind: 'background'
+/** What every native menu request says about where it was asked for. */
+interface ShellMenuShowBase {
   /** The calling window's display (checked against the sender). */
   displayId: number
   /** Where the menu opens, in the window's CSS pixels (the event's clientX / clientY). */
   point: Point
   /** Shift was held: Windows' extended verbs. */
   extendedVerbs: boolean
-  /** What Taskyard's items tick and say. */
-  state: CanvasMenuState
 }
+
+/**
+ * A right-click (or Shift+F10 / the menu key) on the empty desktop of the calling window
+ * (Phase 3), or on its icons (Phase 4). The renderer never names a path: main resolves what the
+ * menu is for — the Desktop background, or the items' current paths from its own model.
+ */
+export type ShellMenuShowRequest =
+  | (ShellMenuShowBase & {
+      kind: 'background'
+      /** What Taskyard's items tick and say. */
+      state: CanvasMenuState
+    })
+  | (ShellMenuShowBase & {
+      kind: 'items'
+      /** The items the menu acts on, the right-clicked one first (`itemMenuTargets`). */
+      ids: string[]
+      state: ItemMenuState
+    })
 
 /** Why Taskyard's own menu opens instead of the native one. */
 export type ShellMenuFallbackReason =
@@ -472,6 +484,8 @@ export type ShellMenuFallbackReason =
   | 'disposed'
   /** Main could not tell which desktop window asked. */
   | 'unknown-window'
+  /** Phase 4: main does not know the right-clicked item (it is gone). */
+  | 'unknown-items'
 
 /**
  * What became of the native menu. `fallback`: open Taskyard's own menu at the same point.

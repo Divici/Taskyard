@@ -12,7 +12,13 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { ZOrderMode } from './api'
 import { FILE_ATTRIBUTE_HIDDEN } from './constants'
-import { createFakeWin32Api, FAKE_APP_WINDOW, FAKE_SHELL_WINDOW } from './fake-api'
+import {
+  createFakeWin32Api,
+  FAKE_APP_WINDOW,
+  FAKE_SHELL_MENU_OWNER,
+  FAKE_SHELL_WINDOW
+} from './fake-api'
+import { FAKE_OWNER_HWND } from './shell-menu-fake'
 
 const OURS = 0x5001n
 const OTHER = 0x5002n
@@ -299,5 +305,14 @@ describe('createFakeWin32Api', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('isShellMenuOwner (Phase 4)', () => {
+  it('recognises the shell-menu helper’s hidden owner window, and nothing else', () => {
+    const api = createFakeWin32Api()
+    expect(api.isShellMenuOwner(FAKE_SHELL_MENU_OWNER)).toBe(true)
+    expect(api.isShellMenuOwner(FAKE_APP_WINDOW)).toBe(false)
+    expect(FAKE_SHELL_MENU_OWNER).toBe(FAKE_OWNER_HWND)
   })
 })

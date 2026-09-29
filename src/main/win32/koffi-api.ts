@@ -38,6 +38,7 @@ import {
   SPI_GETDESKWALLPAPER,
   SFVIDM_EDIT_PASTE,
   SFVIDM_EDIT_UNDO,
+  SHELL_MENU_OWNER_CLASS,
   WM_CANCELMODE,
   WM_COMMAND,
   WM_NCDESTROY,
@@ -265,6 +266,8 @@ export function createKoffiWin32Api(koffi: Koffi, options: KoffiWin32ApiOptions)
       taskbars().includes(hwnd) ||
       trayOverflow().includes(hwnd) ||
       b.processIdOf(hwnd) === process.pid,
+
+    isShellMenuOwner: (hwnd) => b.className(hwnd).startsWith(SHELL_MENU_OWNER_CLASS),
 
     isAbove: (hwndA, hwndB) => isAboveInZOrder(hwndA, hwndB, probe),
 

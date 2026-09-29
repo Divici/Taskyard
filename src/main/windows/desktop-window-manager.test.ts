@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import {
   createFakeWin32Api,
   FAKE_APP_WINDOW,
+  FAKE_SHELL_MENU_OWNER,
   FAKE_TASKBAR_WINDOW,
   FAKE_TRAY_HOST_WINDOW,
   type FakeWin32Api
@@ -19,6 +20,7 @@ import {
   createDesktopWindowManager,
   FOREGROUND_SETTLE_MS,
   IDLE_UNPEEK_MS,
+  MENU_FOREGROUND_SETTLE_MS,
   RECREATE_COOLDOWN_MS,
   SHELL_CHANGE_GRACE_MS,
   RECREATE_LIMIT,
@@ -331,17 +333,15 @@ describe('peek', () => {
   })
 
   describe('native menus (Phase 3): the shell-menu helper’s menu during a Peek', () => {
-    const HELPER_OWNER = 0x5e11n
+    const HELPER_OWNER = FAKE_SHELL_MENU_OWNER
 
-    it('keeps the peek while the menu is up (its owner window, a command passing the foreground on)', () => {
+    it('keeps the peek while the menu is up (its owner window has the foreground) and after', () => {
       start()
       allReady()
       manager.peek(true)
       const release = manager.holdForMenu()
 
       api.emitForeground(HELPER_OWNER)
-      // Paste hands the foreground to the next app while it runs; the helper then gives it back.
-      api.emitForeground(FAKE_APP_WINDOW)
       api.emitForeground(windows()[0].hwnd)
       expect(manager.peeking).toBe(true)
 
@@ -349,42 +349,88 @@ describe('peek', () => {
       expect(manager.peeking).toBe(true)
     })
 
-    it('judges the foreground when the menu closes: another app there ends the peek', () => {
-      start()
-      allReady()
-      manager.peek(true)
-      const release = manager.holdForMenu()
-
-      // The user dismissed the menu by clicking another app.
-      api.emitForeground(FAKE_APP_WINDOW)
-      expect(manager.peeking).toBe(true)
-      release()
-
-      expect(manager.peeking).toBe(false)
-      expect(log.info).toHaveBeenCalledWith(expect.stringContaining('another app'))
-    })
-
-    it('the helper’s window is foreign again once its menu closed', () => {
+    it('Phase 4: a window a chosen command opens while the menu is held (a Delete confirmation) ends the peek, so it is not hidden under it', () => {
       start()
       allReady()
       manager.peek(true)
       const release = manager.holdForMenu()
       api.emitForeground(HELPER_OWNER)
+      // Measured: Delete's confirmation is modal inside the invoke, so the menu is still held.
+      api.emitForeground(FAKE_APP_WINDOW)
+      vi.advanceTimersByTime(MENU_FOREGROUND_SETTLE_MS - 1)
+      expect(manager.peeking).toBe(true)
+      vi.advanceTimersByTime(1)
+      expect(manager.peeking).toBe(false)
+      expect(log.info).toHaveBeenCalledWith(expect.stringContaining('another app'))
       release()
-      // Still the helper's hidden owner (nothing gave the foreground back): the peek ends.
       expect(manager.peeking).toBe(false)
     })
 
-    it('waits for the last of two overlapping menus', () => {
+    it('Phase 4: a window that only passes through the foreground while a command runs (Delete’s progress window) keeps the peek', () => {
       start()
       allReady()
       manager.peek(true)
+      const release = manager.holdForMenu()
+      api.emitForeground(HELPER_OWNER)
+      api.emitForeground(FAKE_APP_WINDOW)
+      // The helper hands the keyboard back to Taskyard before the settle time is up.
+      api.emitForeground(windows()[0].hwnd)
+      vi.advanceTimersByTime(MENU_FOREGROUND_SETTLE_MS * 2)
+      expect(manager.peeking).toBe(true)
+      release()
+      expect(manager.peeking).toBe(true)
+    })
+
+    it('a click on another app (which dismisses the menu) ends the peek', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      const release = manager.holdForMenu()
+
+      api.emitForeground(FAKE_APP_WINDOW)
+      vi.advanceTimersByTime(MENU_FOREGROUND_SETTLE_MS)
+      expect(manager.peeking).toBe(false)
+      expect(log.info).toHaveBeenCalledWith(expect.stringContaining('another app'))
+      release()
+      expect(manager.peeking).toBe(false)
+    })
+
+    it('judges at once when the menu is released (the settle time does not delay it)', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      const release = manager.holdForMenu()
+      api.emitForeground(FAKE_APP_WINDOW)
+      release()
+      expect(manager.peeking).toBe(false)
+    })
+
+    it('Phase 4: the helper’s hidden owner never ends a peek, even after its menu closed', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      const release = manager.holdForMenu()
+      api.emitForeground(HELPER_OWNER)
+      // Still the owner (Send to ▸ Compressed folder): the helper hands the keyboard back to
+      // Taskyard when it retires the owner; nothing of Windows' needs to be seen meanwhile.
+      release()
+      expect(manager.peeking).toBe(true)
+      api.emitForeground(HELPER_OWNER)
+      expect(manager.peeking).toBe(true)
+    })
+
+    it('the idle timer waits for the last of two overlapping menus', () => {
+      start()
+      allReady()
+      manager.peek(true)
+      api.emitForeground(windows()[0].hwnd)
       const first = manager.holdForMenu()
       const second = manager.holdForMenu()
-      api.emitForeground(FAKE_APP_WINDOW)
       first()
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS * 2)
       expect(manager.peeking).toBe(true)
       second()
+      vi.advanceTimersByTime(IDLE_UNPEEK_MS)
       expect(manager.peeking).toBe(false)
     })
 

@@ -293,6 +293,21 @@ describe.runIf(realWin32TestsEnabled())('createKoffiWin32Api (real Win32)', () =
     expect(() => unsubscribe()).not.toThrow()
   })
 
+  it('Phase 4: reads window class names; only a shell-menu owner window counts as one', () => {
+    const shell = api.getShellWindow()!
+    // The shell window is Progman, or a WorkerW when a slideshow / wallpaper engine replaced it.
+    expect(['Progman', 'WorkerW']).toContain(b.className(shell))
+    expect(api.isShellMenuOwner(shell)).toBe(false)
+    const probe = createProbeWindow()
+    try {
+      expect(b.className(probe)).not.toBe('')
+      expect(api.isShellMenuOwner(probe)).toBe(false)
+    } finally {
+      destroyWindow(probe)
+    }
+    expect(b.className(probe)).toBe('')
+  })
+
   it('Phase 3: posts WM_CANCELMODE only to live windows, and reads the foreground window', () => {
     const hwnd = createProbeWindow()
     try {

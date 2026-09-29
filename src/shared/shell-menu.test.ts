@@ -2,10 +2,16 @@ import { describe, expect, it } from 'vitest'
 import {
   BACKGROUND_MENU_MAPPING,
   CANVAS_MENU_IDS,
+  ITEM_MENU_IDS,
   backgroundMenuPolicy,
   isShellNewVerb,
+  itemMenuPlacement,
+  itemMenuPolicy,
+  itemMenuTargets,
   newItemPlacement,
+  parentFolderKey,
   type CanvasMenuState,
+  type ItemMenuState,
   type TaskyardMenuItem
 } from './shell-menu'
 
@@ -175,5 +181,96 @@ describe('newItemPlacement (New ▸ / Paste land at the right-click point)', () 
     expect(isShellNewVerb('.tar.gz')).toBe(false)
     expect(isShellNewVerb('NewFolder')).toBe(false)
     expect(isShellNewVerb(null)).toBe(false)
+  })
+})
+
+describe('itemMenuPolicy (the native file menu of desktop icons, Phase 4)', () => {
+  const STATE_ITEM: ItemMenuState = { inGroup: false, canRename: true }
+
+  it('adds Copy path only where Windows has no Copy as path; Remove from group only in a group', () => {
+    const loose = itemMenuPolicy(STATE_ITEM)
+    expect(clickable(loose.taskyardItems).map((item) => [item.id, item.unlessVerb])).toEqual([
+      [ITEM_MENU_IDS.copyPath, 'copyaspath']
+    ])
+    const grouped = itemMenuPolicy({ ...STATE_ITEM, inGroup: true })
+    expect(clickable(grouped.taskyardItems).map((item) => item.id)).toEqual([
+      ITEM_MENU_IDS.removeFromGroup,
+      ITEM_MENU_IDS.copyPath
+    ])
+    expect(clickable(grouped.taskyardItems).map((item) => item.label.replace('&', ''))).toEqual([
+      'Remove from group',
+      'Copy path'
+    ])
+  })
+
+  it('intercepts Rename (Taskyard renames inline) and hides it when Taskyard would not rename', () => {
+    expect(itemMenuPolicy(STATE_ITEM).interceptVerbs).toEqual(['rename'])
+    expect(itemMenuPolicy(STATE_ITEM).hideVerbs).toEqual([])
+    expect(itemMenuPolicy({ ...STATE_ITEM, canRename: false }).hideVerbs).toEqual(['rename'])
+  })
+
+  it('leaves every other Windows item alone (nothing replaced, hidden or intercepted)', () => {
+    const policy = itemMenuPolicy({ inGroup: true, canRename: true })
+    expect(policy.replaceSubmenus).toEqual([])
+    expect(policy.hideSubmenus).toEqual([])
+    expect(policy.interceptSubmenus).toEqual([])
+  })
+})
+
+describe('itemMenuTargets (what a right-click on an icon acts on)', () => {
+  const PATHS: Record<string, string> = {
+    a: 'C:\\Users\\me\\Desktop\\a.txt',
+    b: 'C:\\Users\\me\\Desktop\\b.txt',
+    c: 'C:\\Users\\me\\desktop\\C.txt',
+    p: 'C:\\Users\\Public\\Desktop\\p.lnk'
+  }
+  const pathOf = (id: string): string | undefined => PATHS[id]
+
+  it('an icon outside the selection is acted on alone', () => {
+    expect(itemMenuTargets('a', ['b', 'c'], pathOf)).toEqual(['a'])
+    expect(itemMenuTargets('a', [], pathOf)).toEqual(['a'])
+  })
+
+  it('the whole selection when it holds the icon and shares one folder (right-clicked first)', () => {
+    // Folder names compare like NTFS (case-insensitive).
+    expect(itemMenuTargets('b', ['a', 'b', 'c'], pathOf)).toEqual(['b', 'a', 'c'])
+  })
+
+  it('only the right-clicked icon when the selection spans the user and Public Desktop', () => {
+    expect(itemMenuTargets('a', ['a', 'p'], pathOf)).toEqual(['a'])
+    expect(itemMenuTargets('p', ['a', 'b', 'p'], pathOf)).toEqual(['p'])
+  })
+
+  it('skips selected ids with no known path', () => {
+    expect(itemMenuTargets('a', ['a', 'gone', 'b'], pathOf)).toEqual(['a', 'b'])
+  })
+})
+
+describe('parentFolderKey', () => {
+  it('compares folders without case, slash style or a trailing separator', () => {
+    expect(parentFolderKey('C:/Users/me/Desktop/a.txt')).toBe('C:\\USERS\\ME\\DESKTOP')
+    expect(parentFolderKey('c:\\users\\me\\desktop\\sub\\')).toBe('C:\\USERS\\ME\\DESKTOP')
+    expect(parentFolderKey('a.txt')).toBe('')
+  })
+})
+
+describe('itemMenuPlacement (what a file menu command makes, placed at the right-click point)', () => {
+  it('Create shortcut: the new shortcut is placed next to the click, not renamed', () => {
+    expect(itemMenuPlacement('link')).toEqual({ rename: false })
+  })
+
+  it('nothing else is placed (Paste into a folder, Copy, Delete, Properties, Send to…)', () => {
+    for (const verb of [
+      null,
+      'paste',
+      'copy',
+      'cut',
+      'delete',
+      'properties',
+      'open',
+      'NewFolder'
+    ]) {
+      expect(itemMenuPlacement(verb)).toBeNull()
+    }
   })
 })

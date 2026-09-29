@@ -21,7 +21,9 @@ const showRequest: HelperRequest = {
           items: [{ kind: 'item', id: 'x', label: 'X', checked: true }]
         }
       ]
-    }
+    },
+    // Phase 4: shown only where the shell menu has no such verb.
+    { kind: 'item', id: 'copy-path', label: 'Copy path', unlessVerb: 'copyaspath' }
   ],
   interceptVerbs: ['rename', 'refresh'],
   interceptSubmenus: ['sortascending'],
@@ -145,6 +147,8 @@ describe('parseHelperMessage (helper → main)', () => {
       { type: 'ready', pid: 4242 },
       { type: 'fatal', message: 'koffi failed to load' },
       { type: 'showing', id: 3, ownerHwnd: '2039016' },
+      // Phase 4 review: the menu closed and the chosen command runs now.
+      { type: 'invoking', id: 3 },
       { type: 'result', id: 3, result: { kind: 'show', outcome: { kind: 'dismissed' } } },
       {
         type: 'result',
@@ -195,6 +199,7 @@ describe('parseHelperMessage (helper → main)', () => {
       'ready',
       { type: 'ready' },
       { type: 'showing', id: 3, ownerHwnd: '0x1f' },
+      { type: 'invoking' },
       { type: 'result', id: 3, result: { kind: 'show', outcome: { kind: 'taskyard' } } },
       { type: 'result', id: 3, result: { kind: 'teleport' } }
     ]

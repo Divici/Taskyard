@@ -65,7 +65,8 @@ export function createHelperCore({ api, post, onShutdown }: HelperCoreDeps): {
             onShowing: ({ ownerHwnd }) => {
               shown = true
               post({ type: 'showing', id, ownerHwnd: String(ownerHwnd) })
-            }
+            },
+            onInvoking: () => post({ type: 'invoking', id })
           })
         } catch (error) {
           // Before the menu showed, main may fall back to its own menu (an error). After, the user

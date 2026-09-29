@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ComError } from './com'
 import {
+  HRESULT_COPYENGINE_USER_CANCELLED,
   HRESULT_ERROR_CANCELLED,
   invokeOutcome,
   labelFor,
@@ -9,7 +10,10 @@ import {
   placedToItems,
   replaceSubmenus,
   resolveLabels,
+  resolveTaskyardItems,
+  shapeMenu,
   invokesByVerb,
+  retireFocusTarget,
   returnsFocus,
   runInvoke
 } from './shell-menu-shape'
@@ -307,6 +311,19 @@ describe('invokeOutcome / runInvoke (a failed invoke after the user chose)', () 
     expect(() => runInvoke(cancelled)).not.toThrow()
   })
 
+  it('Phase 4 review: treats COPYENGINE_E_USER_CANCELLED — "No" in a Delete confirmation — as success', () => {
+    // Measured: answering No to Shift+Delete's "permanently delete?" fails InvokeCommand with it.
+    expect(HRESULT_COPYENGINE_USER_CANCELLED).toBe(0x80270000 | 0)
+    const declined = (): void => {
+      throw new ComError(
+        'IContextMenu::InvokeCommand failed: HRESULT 0x80270000',
+        HRESULT_COPYENGINE_USER_CANCELLED
+      )
+    }
+    expect(invokeOutcome(chosen, declined)).toMatchObject({ kind: 'invoked' })
+    expect(() => runInvoke(declined)).not.toThrow()
+  })
+
   it('turns any other failure into invoke-failed with the message (not a rejection)', () => {
     const failing = (): void => {
       throw new ComError('IContextMenu::InvokeCommand failed: HRESULT 0x80070005', 0x80070005 | 0)
@@ -347,6 +364,15 @@ describe('returnsFocus (Phase 3: who gets the keyboard after the menu closes)', 
     }
   })
 
+  it('Phase 4: and after an icon’s Delete or Create shortcut (the user goes on on the desktop)', () => {
+    // Measured on this machine: both leave the helper's hidden owner window holding the
+    // foreground (no window of Windows' opens); a confirmation they show is modal inside the
+    // invoke, and the hand-back only happens while the owner still has the foreground.
+    for (const verb of ['delete', 'link']) {
+      expect(returnsFocus(invoked(verb))).toBe(true)
+    }
+  })
+
   it('never after a command that may open a window of its own (Settings, a wizard, a dialog)', () => {
     // Paste run in the helper hands the foreground on through its copy window (measured).
     for (const verb of [null, 'Display', 'Personalize', 'NewLink', 'paste', 'undo', 'properties']) {
@@ -366,5 +392,65 @@ describe('invokesByVerb (DefView’s own background commands on a windowless vie
     expect(invokesByVerb('Display', true)).toBe(false)
     expect(invokesByVerb(null, true)).toBe(false)
     expect(invokesByVerb('paste', false)).toBe(false)
+  })
+})
+
+describe('Phase 4: Taskyard items shown only where Windows has no equivalent (unlessVerb)', () => {
+  const fileMenu: ShellMenuItem[] = [
+    item(1, 'Open', 'open'),
+    submenu('More', [item(2, 'Copy as path', 'copyaspath')]),
+    item(3, 'Delete', 'delete')
+  ]
+  const copyPath = {
+    kind: 'item' as const,
+    id: 'item.copy-path',
+    label: 'Copy &path',
+    unlessVerb: 'copyaspath'
+  }
+  const remove = { kind: 'item' as const, id: 'item.remove-from-group', label: 'Remove' }
+
+  it('drops an item whose verb Windows shows (at any depth) and keeps it otherwise', () => {
+    expect(resolveTaskyardItems([remove, copyPath], fileMenu)).toEqual([remove])
+    expect(resolveTaskyardItems([remove, copyPath], [item(1, 'Open', 'open')])).toEqual([
+      remove,
+      copyPath
+    ])
+    expect(
+      resolveTaskyardItems([{ kind: 'submenu', label: 'In', items: [copyPath] }], fileMenu)
+    ).toEqual([{ kind: 'submenu', label: 'In', items: [] }])
+  })
+
+  it('shapeMenu leaves no Taskyard separator on top when every Taskyard item was dropped', () => {
+    const shaped = shapeMenu(fileMenu, {
+      taskyardItems: [copyPath],
+      replaceSubmenus: [],
+      hideVerbs: [],
+      hideSubmenus: []
+    })
+    expect(shaped.menu.map((entry) => entry.label)).toEqual(['Open', 'More', 'Delete'])
+    expect(shaped.idByCommand.size).toBe(0)
+    const kept = shapeMenu([item(1, 'Open', 'open')], {
+      taskyardItems: [copyPath],
+      replaceSubmenus: [],
+      hideVerbs: [],
+      hideSubmenus: []
+    })
+    expect(kept.menu.map((entry) => (entry.separator ? '---' : entry.label))).toEqual([
+      'Copy &path',
+      '---',
+      'Open'
+    ])
+  })
+})
+
+describe('retireFocusTarget (Phase 4: an owner window retired while it still has the foreground)', () => {
+  it('hands the keyboard back to Taskyard’s window when nothing else took it since the menu', () => {
+    expect(retireFocusTarget({ owner: 0x10n, foreground: 0x10n, returnFocusTo: 0x42n })).toBe(0x42n)
+  })
+
+  it('leaves the foreground alone when another window has it, or there is no window to return to', () => {
+    expect(retireFocusTarget({ owner: 0x10n, foreground: 0x77n, returnFocusTo: 0x42n })).toBeNull()
+    expect(retireFocusTarget({ owner: 0x10n, foreground: null, returnFocusTo: 0x42n })).toBeNull()
+    expect(retireFocusTarget({ owner: 0x10n, foreground: 0x10n, returnFocusTo: null })).toBeNull()
   })
 })

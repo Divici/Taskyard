@@ -19,6 +19,8 @@ export const FAKE_APP_WINDOW = 0x20020n
 export const FAKE_TASKBAR_WINDOW = 0x30030n
 /** The fake's own tray icon host window (Electron_NotifyIconHostWindow in Taskyard's process). */
 export const FAKE_TRAY_HOST_WINDOW = 0x40040n
+/** The shell-menu helper's hidden owner window (`isShellMenuOwner`; the fake helper's owner). */
+export const FAKE_SHELL_MENU_OWNER = 0x5e11n
 
 export interface FakeCall {
   method: keyof Win32Api
@@ -221,6 +223,10 @@ export function createFakeWin32Api(options: FakeWin32ApiOptions = {}): FakeWin32
     isTrayWindow(hwnd) {
       record('isTrayWindow', [hwnd])
       return hwnd === FAKE_TASKBAR_WINDOW || hwnd === FAKE_TRAY_HOST_WINDOW
+    },
+    isShellMenuOwner(hwnd) {
+      record('isShellMenuOwner', [hwnd])
+      return hwnd === FAKE_SHELL_MENU_OWNER
     },
     isAbove(a, b) {
       record('isAbove', [a, b])

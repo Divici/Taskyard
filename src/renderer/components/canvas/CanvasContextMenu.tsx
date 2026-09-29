@@ -8,6 +8,7 @@ import {
   ContextMenuTrigger
 } from '../ui/context-menu'
 import { MENU_CONTENT, MENU_ITEM, MENU_SEPARATOR } from '../menu/menu-styles'
+import { useNativeFirstMenu, type NativeMenuHandler } from '../menu/useNativeFirstMenu'
 
 export const DISPLAY_SETTINGS_URL = 'ms-settings:display'
 export const PERSONALIZE_URL = 'ms-settings:personalization-background'
@@ -28,7 +29,7 @@ export interface CanvasContextMenuProps {
    * Native menus (Phase 3): shows the real Windows desktop menu instead of this one. Resolves
    * false when it could not (this menu then opens at the same point). Omitted: this menu only.
    */
-  onNativeMenu?(at: { point: Point; shiftKey: boolean }): Promise<boolean>
+  onNativeMenu?: NativeMenuHandler
   /** The canvas surface (the trigger). */
   children: React.ReactElement
 }
@@ -54,8 +55,7 @@ export function CanvasContextMenu({
   children
 }: CanvasContextMenuProps): React.JSX.Element {
   const clickedAt = useRef<Point>({ x: 0, y: 0 })
-  /** The next contextmenu is the fallback this component re-dispatches: let Radix open it. */
-  const fallbackNext = useRef(false)
+  const nativeFirst = useNativeFirstMenu(onNativeMenu)
 
   return (
     <ContextMenu modal={false}>
@@ -63,27 +63,7 @@ export function CanvasContextMenu({
         asChild
         onContextMenu={(event) => {
           clickedAt.current = { x: event.clientX, y: event.clientY }
-          if (fallbackNext.current) {
-            fallbackNext.current = false
-            return
-          }
-          if (!onNativeMenu) return
-          // No Radix menu now: the native one shows, or this one follows as the fallback.
-          event.preventDefault()
-          const trigger = event.currentTarget
-          const init: MouseEventInit = {
-            bubbles: true,
-            cancelable: true,
-            clientX: event.clientX,
-            clientY: event.clientY
-          }
-          void onNativeMenu({ point: { ...clickedAt.current }, shiftKey: event.shiftKey }).then(
-            (handled) => {
-              if (handled || !trigger.isConnected) return
-              fallbackNext.current = true
-              trigger.dispatchEvent(new MouseEvent('contextmenu', init))
-            }
-          )
+          nativeFirst(event)
         }}
       >
         {children}
