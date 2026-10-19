@@ -136,29 +136,75 @@ describe('TimerTool', () => {
 
     await user.click(screen.getByRole('button', { name: 'Start' }))
     for (const button of presets.getAllByRole('button')) expect(button).toBeDisabled()
+    expect(screen.getByRole('spinbutton', { name: 'Custom hours' })).toBeDisabled()
     expect(screen.getByRole('spinbutton', { name: 'Custom minutes' })).toBeDisabled()
   })
 
-  it('the custom input takes 1–180 minutes and explains anything else', async () => {
+  it('the custom fields take hours (0–99) and minutes (0–59), at least a minute in all', async () => {
     const { user } = setup()
-    const custom = screen.getByRole('spinbutton', { name: 'Custom minutes' })
-    expect(custom).toHaveAttribute('min', '1')
-    expect(custom).toHaveAttribute('max', '180')
+    const hours = screen.getByRole('spinbutton', { name: 'Custom hours' })
+    const minutes = screen.getByRole('spinbutton', { name: 'Custom minutes' })
+    expect(hours).toHaveAttribute('min', '0')
+    expect(hours).toHaveAttribute('max', '99')
+    expect(minutes).toHaveAttribute('min', '0')
+    expect(minutes).toHaveAttribute('max', '59')
+    // 25 minutes to begin with.
+    expect(hours).toHaveValue(0)
+    expect(minutes).toHaveValue(25)
 
-    await user.clear(custom)
-    await user.type(custom, '181{Enter}')
-    expect(custom).toHaveAttribute('aria-invalid', 'true')
-    expect(custom).toHaveAccessibleDescription('Enter a whole number of minutes from 1 to 180.')
-    expect(clock()).toBe('25:00')
+    // Past three hours is fine now.
+    await user.clear(hours)
+    await user.type(hours, '4{Enter}')
+    expect(hours).not.toHaveAttribute('aria-invalid')
+    expect(clock()).toBe('4:25:00')
+    expect(useTasksStore.getState().timer.durationMs).toBe(4 * 3_600_000 + 25 * 60_000)
 
-    await user.clear(custom)
-    await user.type(custom, '0{Enter}')
-    expect(custom).toHaveAttribute('aria-invalid', 'true')
+    // Minutes past 59 belong in the hours field.
+    await user.clear(minutes)
+    await user.type(minutes, '60{Enter}')
+    expect(minutes).toHaveAttribute('aria-invalid', 'true')
+    expect(minutes).toHaveAccessibleDescription(
+      'Enter whole hours from 0 to 99 and minutes from 0 to 59, at least 1 minute in all.'
+    )
+    expect(clock()).toBe('4:25:00')
 
-    await user.clear(custom)
-    await user.type(custom, '90{Enter}')
-    expect(custom).not.toHaveAttribute('aria-invalid')
+    // Nothing at all is not a countdown.
+    await user.clear(hours)
+    await user.type(hours, '0')
+    await user.clear(minutes)
+    await user.type(minutes, '0{Enter}')
+    expect(hours).toHaveAttribute('aria-invalid', 'true')
+    expect(minutes).toHaveAttribute('aria-invalid', 'true')
+    expect(clock()).toBe('4:25:00')
+
+    // The cap.
+    await user.clear(hours)
+    await user.type(hours, '100')
+    await user.clear(minutes)
+    await user.type(minutes, '5{Enter}')
+    expect(hours).toHaveAttribute('aria-invalid', 'true')
+    expect(clock()).toBe('4:25:00')
+
+    await user.clear(hours)
+    await user.type(hours, '1')
+    await user.clear(minutes)
+    await user.type(minutes, '30{Enter}')
+    expect(hours).not.toHaveAttribute('aria-invalid')
+    expect(minutes).not.toHaveAttribute('aria-invalid')
     expect(clock()).toBe('1:30:00')
+  })
+
+  it('the custom fields follow a duration set elsewhere, split into hours and minutes', () => {
+    setup({ timer: { durationMs: 2 * 3_600_000 + 15 * 60_000 } })
+    expect(screen.getByRole('spinbutton', { name: 'Custom hours' })).toHaveValue(2)
+    expect(screen.getByRole('spinbutton', { name: 'Custom minutes' })).toHaveValue(15)
+    expect(clock()).toBe('2:15:00')
+
+    act(() =>
+      useTasksStore.getState().updateTimer((timer) => ({ ...timer, durationMs: 90 * 60_000 }))
+    )
+    expect(screen.getByRole('spinbutton', { name: 'Custom hours' })).toHaveValue(1)
+    expect(screen.getByRole('spinbutton', { name: 'Custom minutes' })).toHaveValue(30)
   })
 
   it('round 2: completion raises the Windows notification and the chime, not an in-app toast', async () => {

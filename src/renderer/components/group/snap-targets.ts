@@ -27,7 +27,7 @@ export function shownWindows(displayId: number): Array<{ key: string; rect: Rect
     .map((group) => ({ key: `group:${group.id}`, rect: visibleGroupRect(group) }))
   const { tools } = display
   const toolsOn = useSettingsStore.getState().settings.toolsEnabled && tools.visible
-  if (!toolsOn || quickHidden) return windows
+  if (!toolsOn || (quickHidden && !tools.excludeFromQuickHide)) return windows
   const height = tools.rolledUp ? GROUP_HEADER_HEIGHT : tools.h
   return [...windows, { key: 'tools', rect: { x: tools.x, y: tools.y, width: tools.w, height } }]
 }

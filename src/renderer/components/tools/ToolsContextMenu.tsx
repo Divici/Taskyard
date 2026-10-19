@@ -3,6 +3,7 @@ import { useTasksStore } from '../../stores/tasks'
 import { MENU_CHECK_ITEM, MENU_CONTENT, MENU_ITEM, MENU_SEPARATOR } from '../menu/menu-styles'
 import {
   ContextMenu,
+  ContextMenuCheckboxItem,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuRadioGroup,
@@ -16,18 +17,21 @@ export interface ToolsContextMenuProps {
   displayId: number
   activeTool: ToolId
   rolledUp: boolean
+  /** The widget stays shown while quick-hide is on (saved per display, like a group's). */
+  excludeFromQuickHide: boolean
   /** The widget element (the menu's trigger). */
   children: React.ReactElement
 }
 
 /**
  * Right-click (or "…") menu of the tools widget: switch tool · Roll up/down · Clear completed
- * tasks · Hide tools widget (the desktop menu shows it again).
+ * tasks · Exclude from quick-hide ✓ · Hide tools widget (the desktop menu shows it again).
  */
 export function ToolsContextMenu({
   displayId,
   activeTool,
   rolledUp,
+  excludeFromQuickHide,
   children
 }: ToolsContextMenuProps): React.JSX.Element {
   const tools = (patch: Parameters<typeof patchTools>[0]): void =>
@@ -62,6 +66,13 @@ export function ToolsContextMenu({
         >
           Clear completed tasks
         </ContextMenuItem>
+        <ContextMenuCheckboxItem
+          className={MENU_CHECK_ITEM}
+          checked={excludeFromQuickHide}
+          onCheckedChange={(checked) => tools({ excludeFromQuickHide: checked === true })}
+        >
+          Exclude from quick-hide
+        </ContextMenuCheckboxItem>
         <ContextMenuSeparator className={MENU_SEPARATOR} />
         <ContextMenuItem className={MENU_ITEM} onSelect={() => tools({ visible: false })}>
           Hide tools widget

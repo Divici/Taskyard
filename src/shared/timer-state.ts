@@ -6,9 +6,11 @@ import type { TimerState } from './schema'
 // transition does not apply. A running timer stores an absolute `endsAt` (epoch ms), never a
 // countdown, so it survives sleep and restarts without drifting.
 
-/** The custom duration input's range: 1 to 180 whole minutes. */
+/** The custom duration fields' range: whole minutes, from 1 minute to 99 hours 59 minutes. */
 export const TIMER_MIN_MS = 60_000
-export const TIMER_MAX_MS = 180 * 60_000
+/** The hours field's top value (the minutes field takes 0–59 beside it). */
+export const TIMER_MAX_HOURS = 99
+export const TIMER_MAX_MS = (TIMER_MAX_HOURS * 60 + 59) * 60_000
 
 /** A finished or idle timer without the transient fields of a countdown. */
 function withoutCountdown(timer: TimerState): TimerState {
@@ -70,7 +72,7 @@ export function stopTimer(timer: TimerState): TimerState {
   return { ...withoutCountdown(timer), status: 'idle' }
 }
 
-/** Whole minutes from 1 to 180 (the schema's cap), accepted while idle or finished. */
+/** Whole minutes from 1 minute to 99 h 59 min (the schema's cap), accepted while idle or finished. */
 export function isValidDuration(ms: number): boolean {
   return Number.isInteger(ms) && ms >= TIMER_MIN_MS && ms <= TIMER_MAX_MS && ms % 60_000 === 0
 }

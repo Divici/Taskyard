@@ -93,7 +93,12 @@ export function ToolsWidget({
   }
 
   return (
-    <ToolsContextMenu displayId={displayId} activeTool={active} rolledUp={tools.rolledUp}>
+    <ToolsContextMenu
+      displayId={displayId}
+      activeTool={active}
+      rolledUp={tools.rolledUp}
+      excludeFromQuickHide={tools.excludeFromQuickHide}
+    >
       <section
         ref={element}
         role="region"

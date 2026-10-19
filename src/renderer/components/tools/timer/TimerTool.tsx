@@ -1,6 +1,6 @@
 import { Check, Pause, Play, Square, Undo2 } from 'lucide-react'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { TIMER_MAX_MS, TIMER_MIN_MS, formatClock, timerRemaining } from '@shared/timer-state'
+import { TIMER_MAX_HOURS, formatClock, timerRemaining } from '@shared/timer-state'
 import { cn } from '../../../lib/utils'
 import { useTasksStore } from '../../../stores/tasks'
 import { timerController } from '../../../stores/timer'
@@ -16,13 +16,15 @@ import {
   TOOL_ROW,
   TOOL_VIEW
 } from '../tool-styles'
+import { customDuration, splitDuration } from './custom-duration'
 import { ProgressRing } from './ProgressRing'
 import { useTimerTick } from './useTimerTick'
 
 const MINUTE = 60_000
 /** Controls where Esc already means something (clear/close); everywhere else it asks to stop. */
 const ESC_OWNERS = 'input, select, textarea, [contenteditable]'
-const CUSTOM_HINT = 'Enter a whole number of minutes from 1 to 180.'
+const CUSTOM_HINT = `Enter whole hours from 0 to ${TIMER_MAX_HOURS} and minutes from 0 to 59, at least 1 minute in all.`
+
 /** Announced once when the countdown passes this much time left. */
 const LAST_MINUTE_MS = MINUTE
 
@@ -56,8 +58,9 @@ function LinkedTaskAction({ id, done }: { id: string; done: boolean }): React.JS
 /**
  * The countdown timer: a large `mm:ss` (`h:mm:ss` past an hour) centred in the accent progress
  * ring with a short state caption under it, the linked task on one line under the ring, Start ·
- * Pause/Resume · Stop, presets 5/15/25/45 min and a custom 1–180 minutes field (both locked while
- * a countdown is in progress), and "Focus on…" to link an active task — all on one centre line.
+ * Pause/Resume · Stop, presets 5/15/25/45 min and custom hours (0–99) and minutes (0–59) fields
+ * (all locked while a countdown is in progress), and "Focus on…" to link an active task — all on
+ * one centre line. The chosen duration lives in tasks.json, so it comes back after a restart.
  * When a countdown with a linked task has finished, the inline action follows that task's state:
  * "Mark done" while it is open, "Done ✓ · Undo" once it is done (round 2). Space toggles
  * Start/Pause and Esc (running) asks before stopping, while the view has focus. The display is a
@@ -83,10 +86,11 @@ export function TimerTool(): React.JSX.Element {
   const remaining = useTimerTick(timer, onTick)
   const active = useMemo(() => splitTasks(tasks).active, [tasks])
   const linked = tasks.find((task) => task.id === timer.linkedTaskId)
-  const [custom, setCustom] = useState(String(timer.durationMs / MINUTE))
+  const [custom, setCustom] = useState(() => splitDuration(timer.durationMs))
   const [customInvalid, setCustomInvalid] = useState(false)
   const hintId = useId()
-  const customId = useId()
+  const hoursId = useId()
+  const minutesId = useId()
 
   const counting = timer.status === 'running' || timer.status === 'paused'
   const finished = timer.status === 'finished'
@@ -97,7 +101,7 @@ export function TimerTool(): React.JSX.Element {
     () =>
       useTasksStore.subscribe(({ timer: next }, { timer: before }) => {
         if (next.durationMs !== before.durationMs) {
-          setCustom(String(next.durationMs / MINUTE))
+          setCustom(splitDuration(next.durationMs))
           setCustomInvalid(false)
         }
         if (next.status !== before.status) {
@@ -115,14 +119,53 @@ export function TimerTool(): React.JSX.Element {
     else timerController.start()
   }
 
+  // Both fields apply together (Enter or leaving either): the hours and minutes make one duration.
   const applyCustom = (): void => {
-    const minutes = Number(custom)
-    const ms = minutes * MINUTE
-    const valid =
-      custom.trim() !== '' && Number.isInteger(minutes) && ms >= TIMER_MIN_MS && ms <= TIMER_MAX_MS
-    setCustomInvalid(!valid)
-    if (valid) timerController.setDuration(ms)
+    const ms = customDuration(custom.hours, custom.minutes)
+    setCustomInvalid(ms === null)
+    if (ms !== null) timerController.setDuration(ms)
   }
+
+  const customField = (
+    id: string,
+    field: 'hours' | 'minutes',
+    label: string,
+    max: number
+  ): React.JSX.Element => (
+    <input
+      id={id}
+      type="number"
+      inputMode="numeric"
+      aria-label={label}
+      min={0}
+      max={max}
+      step={1}
+      value={custom[field]}
+      disabled={counting}
+      aria-invalid={customInvalid || undefined}
+      aria-describedby={customInvalid ? hintId : undefined}
+      onChange={(event) => {
+        setCustom({ ...custom, [field]: event.target.value })
+        setCustomInvalid(false)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          applyCustom()
+        }
+      }}
+      onBlur={(event) => {
+        // Moving between the two fields is still editing; apply once focus leaves them both.
+        if (
+          event.relatedTarget?.closest('[data-timer-custom]') === event.currentTarget.parentElement
+        ) {
+          return
+        }
+        applyCustom()
+      }}
+      className={cn(FIELD, 'w-14', customInvalid && 'border-red-400/80')}
+    />
+  )
 
   const confirmStop = async (): Promise<void> => {
     const ok = await useUiStore.getState().confirm({
@@ -257,36 +300,17 @@ export function TimerTool(): React.JSX.Element {
           data-timer-fields=""
           className={cn(TOOL_ROW, 'flex flex-col gap-1.5 text-[11px] text-text-secondary')}
         >
-          <div className="flex items-center gap-2">
-            <label htmlFor={customId} className="w-16 shrink-0">
-              Custom
-            </label>
-            <input
-              id={customId}
-              type="number"
-              inputMode="numeric"
-              aria-label="Custom minutes"
-              min={1}
-              max={180}
-              step={1}
-              value={custom}
-              disabled={counting}
-              aria-invalid={customInvalid || undefined}
-              aria-describedby={customInvalid ? hintId : undefined}
-              onChange={(event) => {
-                setCustom(event.target.value)
-                setCustomInvalid(false)
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  applyCustom()
-                }
-              }}
-              onBlur={applyCustom}
-              className={cn(FIELD, 'w-16', customInvalid && 'border-red-400/80')}
-            />
-            <span aria-hidden="true">min</span>
+          <div
+            role="group"
+            aria-label="Custom duration"
+            data-timer-custom=""
+            className="flex items-center gap-2"
+          >
+            <span className="w-16 shrink-0">Custom</span>
+            {customField(hoursId, 'hours', 'Custom hours', TIMER_MAX_HOURS)}
+            <label htmlFor={hoursId}>h</label>
+            {customField(minutesId, 'minutes', 'Custom minutes', 59)}
+            <label htmlFor={minutesId}>min</label>
           </div>
           {customInvalid && (
             <p id={hintId} className="text-[11px] text-red-300 [[data-theme=light]_&]:text-red-700">

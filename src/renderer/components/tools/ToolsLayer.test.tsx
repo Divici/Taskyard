@@ -95,6 +95,15 @@ describe('tools widget on the desktop', () => {
     expect(widget()).toHaveAttribute('inert')
   })
 
+  it('"Exclude from quick-hide" keeps it shown while the groups hide', () => {
+    renderCanvas({ visible: true, excludeFromQuickHide: true })
+
+    act(() => useUiStore.getState().setQuickHidden(true))
+
+    expect(widget()).not.toHaveAttribute('inert')
+    expect(widget()).not.toHaveClass('opacity-0')
+  })
+
   it('is pulled back inside the work area when the work area shrinks', () => {
     const { rerender } = renderCanvas({ visible: true, x: 2200, y: 24, w: 320, h: 400 })
 

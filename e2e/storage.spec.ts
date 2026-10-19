@@ -48,7 +48,16 @@ test('a corrupt layout.json is quarantined, restored from .bak and announced wit
         bounds: { x: 0, y: 0, width: 2560, height: 1440 },
         groups: [],
         loose: { '1:2': { x: 8, y: 8 } },
-        tools: { x: 32, y: 32, w: 320, h: 400, rolledUp: false, visible: true, activeTool: 'tasks' }
+        tools: {
+          x: 32,
+          y: 32,
+          w: 320,
+          h: 400,
+          rolledUp: false,
+          visible: true,
+          activeTool: 'tasks',
+          excludeFromQuickHide: false
+        }
       }
     ],
     paths: { '1:2': 'C:\\Users\\me\\Desktop\\a.txt' },

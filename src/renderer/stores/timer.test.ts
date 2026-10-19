@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { defaultTimer, emptyTasks } from '@shared/defaults'
-import type { TasksFile, TimerState } from '@shared/schema'
+import { TasksFileSchema, type TasksFile, type TimerState } from '@shared/schema'
+import { TIMER_MAX_MS } from '@shared/timer-state'
 import { FakeMain } from '@shared/test/fake-main'
 import { createTasksStore } from './tasks'
 import { createTimerController, type TimerController } from './timer'
@@ -72,16 +73,27 @@ describe('timer controller', () => {
     expect(main.data.timer).toEqual({ ...defaultTimer(), durationMs: 300_000 })
   })
 
-  it('setDuration validates whole minutes 1–180 and reports whether it applied', async () => {
+  it('setDuration validates whole minutes up to 99 h 59 min and reports whether it applied', async () => {
     const { main, timer, hydrate } = setup()
     hydrate()
 
     expect(timer.setDuration(45 * 60_000)).toBe(true)
     expect(timer.setDuration(0)).toBe(false)
-    expect(timer.setDuration(181 * 60_000)).toBe(false)
+    expect(timer.setDuration(TIMER_MAX_MS + 60_000)).toBe(false)
+    expect(timer.setDuration(181 * 60_000)).toBe(true)
     await main.settle()
 
-    expect(main.data.timer.durationMs).toBe(45 * 60_000)
+    expect(main.data.timer.durationMs).toBe(181 * 60_000)
+  })
+
+  it('a duration past three hours survives a reload of tasks.json (persisted through shutdown)', async () => {
+    const { main, timer, hydrate } = setup()
+    hydrate()
+    expect(timer.setDuration(5 * 3_600_000 + 30 * 60_000)).toBe(true)
+    await main.settle()
+
+    const reloaded = TasksFileSchema.parse(JSON.parse(JSON.stringify(main.data)))
+    expect(reloaded.timer.durationMs).toBe(5 * 3_600_000 + 30 * 60_000)
   })
 
   it('hydrate recomputes the remaining time from endsAt', () => {

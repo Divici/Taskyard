@@ -15,7 +15,7 @@ export interface ToolsLayerProps {
   area: Rect
   /** Above every group. */
   zIndex: number
-  /** Quick-hide. */
+  /** Quick-hide (the widget stays when its layout excludes it from quick-hide). */
   hidden: boolean
 }
 
@@ -43,11 +43,12 @@ export function ToolsLayer({
   hidden
 }: ToolsLayerProps): React.JSX.Element {
   const enabled = useSettingsStore((state) => state.settings.toolsEnabled)
-  const visible = useLayoutStore(
-    (state) =>
-      state.layout.displays.find((display) => display.displayId === displayId)?.tools.visible ??
-      false
+  const tools = useLayoutStore(
+    (state) => state.layout.displays.find((display) => display.displayId === displayId)?.tools
   )
+  const visible = tools?.visible ?? false
+  // Like a group marked "Exclude from quick-hide", the widget can stay while the rest hides.
+  const quickHidden = hidden && !(tools?.excludeFromQuickHide ?? false)
   const layoutHydrated = useLayoutStore((state) => state.hydrated)
 
   // Soft clamp, like the groups: a work area that changed pulls the widget back inside it.
@@ -60,7 +61,7 @@ export function ToolsLayer({
     <>
       <TimerCompletion leader={isPrimaryDisplay(info)} />
       {enabled && visible && (
-        <ToolsWidget displayId={displayId} area={area} zIndex={zIndex} hidden={hidden} />
+        <ToolsWidget displayId={displayId} area={area} zIndex={zIndex} hidden={quickHidden} />
       )}
     </>
   )

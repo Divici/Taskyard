@@ -187,7 +187,8 @@ describe('rematchLayout', () => {
       h: 400,
       rolledUp: true,
       visible: true,
-      activeTool: 'timer' as const
+      activeTool: 'timer' as const,
+      excludeFromQuickHide: false
     }
     const old: DisplayLayout = {
       ...entry(20, RIGHT.bounds, [group('g', 40, 40)], { '1:1': { x: 8, y: 8 } }),

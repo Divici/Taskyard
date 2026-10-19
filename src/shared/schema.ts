@@ -85,7 +85,9 @@ export const ToolsStateSchema = z.object({
   rolledUp: z.boolean(),
   visible: z.boolean(),
   /** Round 2 added 'stopwatch' (a wider enum: older files stay valid). */
-  activeTool: z.enum(['tasks', 'timer', 'stopwatch'])
+  activeTool: z.enum(['tasks', 'timer', 'stopwatch']),
+  /** Like a group's: stays shown while quick-hide is on (false for files written before it). */
+  excludeFromQuickHide: z.boolean().default(false)
 })
 
 export const DisplayLayoutSchema = z.object({
@@ -136,7 +138,8 @@ export const TaskSchema = z.object({
   completedAt: z.number().int().nonnegative().optional()
 })
 
-const MAX_TIMER_MS = 180 * 60_000
+/** 99 h 59 min: the custom fields' top (src/shared/timer-state.ts keeps the same figure). */
+const MAX_TIMER_MS = (99 * 60 + 59) * 60_000
 
 export const TimerStateSchema = z
   .object({

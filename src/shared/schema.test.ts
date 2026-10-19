@@ -20,6 +20,7 @@ import {
   TasksFileSchema,
   TaskSchema,
   TimerStateSchema,
+  ToolsStateSchema,
   type SettingsFile
 } from './schema'
 
@@ -210,6 +211,32 @@ describe('TasksFileSchema', () => {
 
   it('rejects a non-positive duration', () => {
     expect(TimerStateSchema.safeParse({ ...DEFAULT_TIMER, durationMs: 0 }).success).toBe(false)
+  })
+
+  it('accepts durations and presets past three hours, up to 99 h 59 min', () => {
+    const max = (99 * 60 + 59) * 60_000
+    expect(
+      TimerStateSchema.safeParse({ ...DEFAULT_TIMER, durationMs: 5 * 3_600_000 }).success
+    ).toBe(true)
+    expect(TimerStateSchema.safeParse({ ...DEFAULT_TIMER, durationMs: max }).success).toBe(true)
+    expect(TimerStateSchema.safeParse({ ...DEFAULT_TIMER, durationMs: max + 60_000 }).success).toBe(
+      false
+    )
+    expect(
+      TimerStateSchema.safeParse({ ...DEFAULT_TIMER, presetsMs: [4 * 3_600_000] }).success
+    ).toBe(true)
+  })
+})
+
+describe('ToolsStateSchema', () => {
+  it('fills excludeFromQuickHide with false for files written before it existed', () => {
+    const { excludeFromQuickHide, ...older } = DEFAULT_TOOLS
+    expect(excludeFromQuickHide).toBe(false)
+    expect(ToolsStateSchema.parse(older)).toEqual({ ...older, excludeFromQuickHide: false })
+    expect(ToolsStateSchema.parse({ ...older, excludeFromQuickHide: true })).toEqual({
+      ...older,
+      excludeFromQuickHide: true
+    })
   })
 })
 

@@ -76,8 +76,11 @@ describe('timer state', () => {
     expect(timerRemaining(idle({ status: 'finished' }), NOW)).toBe(0)
   })
 
-  it('setDuration accepts whole minutes from 1 to 180 while idle or finished', () => {
+  it('setDuration accepts whole minutes from 1 up to 99 h 59 min while idle or finished', () => {
+    expect(TIMER_MAX_MS).toBe((99 * 60 + 59) * 60_000)
     expect(setTimerDuration(idle(), 15 * 60_000).durationMs).toBe(900_000)
+    expect(setTimerDuration(idle(), 5 * 3_600_000).durationMs).toBe(5 * 3_600_000)
+    expect(setTimerDuration(idle(), TIMER_MAX_MS).durationMs).toBe(TIMER_MAX_MS)
     expect(setTimerDuration(idle({ status: 'finished' }), TIMER_MIN_MS)).toEqual(
       idle({ durationMs: TIMER_MIN_MS })
     )

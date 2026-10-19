@@ -269,4 +269,20 @@ describe('ToolsWidget', () => {
     expect(currentTools().visible).toBe(false)
     expect(useUiStore.getState().toasts).toEqual([])
   })
+
+  it('"Exclude from quick-hide" in its menu is a checkbox saved to this display\'s layout', async () => {
+    const { region, user } = renderWidget()
+
+    await user.click(within(region).getByRole('button', { name: 'Tools options' }))
+    const item = await screen.findByRole('menuitemcheckbox', { name: 'Exclude from quick-hide' })
+    expect(item).toHaveAttribute('aria-checked', 'false')
+    await user.click(item)
+    expect(currentTools().excludeFromQuickHide).toBe(true)
+
+    await user.click(within(region).getByRole('button', { name: 'Tools options' }))
+    const again = await screen.findByRole('menuitemcheckbox', { name: 'Exclude from quick-hide' })
+    expect(again).toHaveAttribute('aria-checked', 'true')
+    await user.click(again)
+    expect(currentTools().excludeFromQuickHide).toBe(false)
+  })
 })

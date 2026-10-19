@@ -80,7 +80,8 @@ with Taskyard's own items mixed in, so none of the regular right-click options g
 ## Quick-hide and Peek
 
 - **Quick-hide**: double-click empty desktop to hide every icon and group and see the plain
-  wallpaper; double-click again to bring them back. Groups marked "keep visible" stay.
+  wallpaper; double-click again to bring them back. Groups marked **Exclude from quick-hide**
+  stay, and so does the tools widget when its own menu has **Exclude from quick-hide** ticked.
 - **Peek**: press **Ctrl+Alt+Space** (rebind it in Settings) or left-click the tray icon to show
   your groups over every open window. The taskbar stays usable on top. Peek ends when you click
   empty desktop, switch to another app, press the shortcut again, or after 8 seconds idle.
@@ -100,9 +101,11 @@ and scrolls — nothing is ever clipped.
   round **+** button (it lights up once there is text). The field stays ready for the next task.
   Tick a task to complete it; completed tasks collapse under **Completed**. Double-click a task to
   edit it, drag the handle to reorder.
-- **Timer**: presets of 5, 15, 25 and 45 minutes or a custom 1–180 minutes; **Start**, **Pause**,
-  **Resume**, **Stop**. **Space** starts or pauses while the timer has focus. Link a task with
-  **Focus on…**; it shows as **Focus: <task>** under the ring (hover it for the full name).
+- **Timer**: presets of 5, 15, 25 and 45 minutes, or a custom length in hours (0–99) and
+  minutes (0–59) — anything from 1 minute to 99 h 59 min; the length you choose is saved and
+  comes back after a restart. **Start**, **Pause**, **Resume**, **Stop**. **Space** starts or
+  pauses while the timer has focus. Link a task with **Focus on…**; it shows as
+  **Focus: <task>** under the ring (hover it for the full name).
 - **When the countdown ends**: the ring pulses, a chime plays (Settings › timer sound) and a Windows
   notification appears by the clock (Settings › timer notification). With the notification turned
   off — or if Windows cannot show it — a small Taskyard pop-up appears above the taskbar instead.

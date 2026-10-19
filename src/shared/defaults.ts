@@ -29,7 +29,8 @@ export const TOOLS_VALUES = {
   h: 400,
   rolledUp: false,
   visible: true,
-  activeTool: 'tasks'
+  activeTool: 'tasks',
+  excludeFromQuickHide: false
 } as const
 
 export const SETTINGS_VALUES = {
