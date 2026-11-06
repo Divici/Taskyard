@@ -345,7 +345,7 @@ describe('DesktopCanvas', () => {
     })
   })
 
-  describe('rolling down (round 2, Fences-style)', () => {
+  describe('rolling down (round 2)', () => {
     it('a rolled-up bar can sit at the bottom; rolled down it grows upward and comes to the front', async () => {
       const { user } = renderCanvas({
         groups: [

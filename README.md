@@ -1,6 +1,6 @@
 # Taskyard
 
-A Fences-style desktop organizer for Windows 11. Taskyard sits on the desktop layer, paints your
+A container-style desktop organizer for Windows 11. Taskyard sits on the desktop layer, paints your
 wallpaper and shows every Desktop item — loose like the real desktop, or inside named glass
 groups you can move, resize, roll up and quick-hide. A floating tools widget holds a to-do list
 and a focus timer.

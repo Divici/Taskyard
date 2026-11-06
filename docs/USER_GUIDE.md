@@ -58,7 +58,7 @@ with Taskyard's own items mixed in, so none of the regular right-click options g
 ## Groups
 
 - **Make one**: right-click empty desktop › **New group here**, or **right-drag** a box around
-  some icons (as in Fences).
+  some icons.
 - **Move**: drag the title bar. **Resize**: drag any edge or corner.
 - **Snapping**: while you move or resize, a group's edges and centre line up with the other
   groups, the tools widget and the screen edges when they come within 8 px — a thin accent guide

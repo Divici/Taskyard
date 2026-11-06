@@ -3,7 +3,7 @@
   "productName": "Taskyard",
   "version": "0.3.1",
   "private": true,
-  "description": "A Fences-style desktop organizer for Windows 11",
+  "description": "A container-style desktop organizer for Windows 11",
   "main": "./out/main/index.js",
   "author": "David Aihe",
   "scripts": {

@@ -298,7 +298,7 @@ export function reorderInGroup(
 }
 
 /**
- * Rolls a group up, or down (Fences): rolled down it comes to the front so it reads over its
+ * Rolls a group up, or down: rolled down it comes to the front so it reads over its
  * neighbours, and when its full height would run past the bottom of `area` it grows upward
  * instead — its title bar moves up (never above the area's top) and the rect keeps that
  * geometry. Other groups are never pushed. The same object for a gone group.

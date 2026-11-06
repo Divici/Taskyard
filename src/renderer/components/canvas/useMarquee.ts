@@ -68,7 +68,7 @@ interface Press {
 /**
  * The rubber band on the empty desktop. Left button: selects the icons it touches (Ctrl adds to
  * the selection), like Explorer; a plain click clears the selection. Right button: draws a new
- * group ("draw a group like Fences") that captures the icons inside it. The band itself is in the
+ * group (a marquee-drawn container) that captures the icons inside it. The band itself is in the
  * ui store (`marquee`) and drawn by `<Marquee />`.
  */
 export function useMarquee({ targets, onDrawGroup }: MarqueeOptions): MarqueeApi {

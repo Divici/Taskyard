@@ -3,7 +3,7 @@ import { IPC, type QuickHideState } from '@shared/ipc'
 import { handleTrusted, type IpcMainLike, type TrustedHandlerOptions } from '../ipc/sender-guard'
 
 // Quick-hide (Phase 9): a double-click on the empty desktop hides the icons and groups on every
-// display together, as Fences does. Main holds the one flag in memory — never in a file, so every
+// display together. Main holds the one flag in memory — never in a file, so every
 // launch starts with the desktop shown — and relays changes to every window.
 
 export interface QuickHideDeps {
